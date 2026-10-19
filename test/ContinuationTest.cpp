@@ -3,16 +3,29 @@
 // machine: a test that cannot run is a test that says nothing.
 #include <gmock/gmock.h>
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "../src/Continuation.h"
+#include "util/GTestHelpers.h"
 #include "util/IndexTestHelpers.h"
 
 using namespace passage;
 using ::testing::HasSubstr;
 
 namespace {
+
+// `makeTestIndex(turtle)` names the index after the running test and writes it
+// to the working directory, which is how 144 files of index once ended up
+// committed. Give it a basename under a temporary directory instead.
+Index indexFrom(std::string turtle) {
+  auto dir = std::filesystem::temp_directory_path() / "passage-cpp-tests";
+  std::filesystem::create_directories(dir);
+  auto basename = dir / gtestCurrentTestName();
+  return ad_utility::testing::makeTestIndex(basename.string(),
+                                            std::move(turtle));
+}
 
 // Four subjects on one predicate, plus two triples on another, so that a
 // pattern can be bound on each component and still have several matches.
@@ -59,7 +72,7 @@ std::pair<std::vector<std::string>, size_t> follow(const Index& index,
 // A quota the pattern does not reach means the answer is complete, and the
 // absence of a continuation is what says so.
 TEST(Continuation, aPatternSmallerThanTheQuotaNeedsNoContinuation) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   Outcome outcome = evaluate(index, all(), Quota{100});
   EXPECT_EQ(outcome.solutions.size(), 6u);
   EXPECT_FALSE(outcome.continuation.has_value());
@@ -69,7 +82,7 @@ TEST(Continuation, aPatternSmallerThanTheQuotaNeedsNoContinuation) {
 // A quota the pattern exceeds means a continuation, and it has to name the
 // offset to resume at rather than anything else.
 TEST(Continuation, aQuotaSplitsThePatternAndNamesWhereToResume) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   Outcome outcome = evaluate(index, all(), Quota{2});
   EXPECT_EQ(outcome.solutions.size(), 2u);
   ASSERT_TRUE(outcome.continuation.has_value());
@@ -86,7 +99,7 @@ TEST(Continuation, aQuotaSplitsThePatternAndNamesWhereToResume) {
 // enumerates the pattern exactly once. Not "about once" — the same solutions,
 // in the same order, as one evaluation that was never interrupted.
 TEST(Continuation, theWholeSequenceEnumeratesThePatternExactlyOnce) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   auto [uninterrupted, once] = follow(index, all(), 1000);
   ASSERT_EQ(once, 1u) << "a quota of 1000 should not have paused at all";
 
@@ -104,7 +117,7 @@ TEST(Continuation, theWholeSequenceEnumeratesThePatternExactlyOnce) {
 // All four shapes, since the permutation the cursor picks differs for each and
 // the offsets have to mean the same thing in all of them.
 TEST(Continuation, everyShapeOfTriplePatternIsContinued) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   struct Case { std::string query; size_t solutions; };
   std::vector<Case> cases{
       {"SELECT * WHERE { ?s ?p ?o }", 6},
@@ -125,7 +138,7 @@ TEST(Continuation, everyShapeOfTriplePatternIsContinued) {
 // and no continuation. This is the trap the Java backend fell into: an unknown
 // value became a wildcard and matched everything.
 TEST(Continuation, anAbsentValueMatchesNothingRatherThanEverything) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   Outcome outcome =
       evaluate(index, "SELECT * WHERE { <nowhere> ?p ?o }", Quota{100});
   EXPECT_TRUE(outcome.solutions.empty());
@@ -135,7 +148,7 @@ TEST(Continuation, anAbsentValueMatchesNothingRatherThanEverything) {
 // What is outside the fragment is refused by name. A kernel that silently
 // ignored a FILTER would answer something that is not the question.
 TEST(Continuation, whatIsOutsideTheFragmentIsRefusedByName) {
-  Index index = ad_utility::testing::makeTestIndex(testGraph());
+  Index index = indexFrom(testGraph());
   auto why = [&index](const std::string& query, size_t quota = 10) {
     try {
       evaluate(index, query, Quota{quota});

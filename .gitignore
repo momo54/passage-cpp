@@ -1,1 +1,11 @@
 build/
+
+# `makeTestIndex` names an index after the test that built it. The tests pass a
+# basename under a temporary directory so that nothing lands here, but a run
+# from an older build, or a stray `makeTestIndex(turtle)` without a basename,
+# still writes to the working directory. Ignored so that a `git add -A` after
+# running the tests cannot commit 144 files of index again.
+Continuation_*
+*.index.*
+*.meta-data.json
+*.vocabulary*
