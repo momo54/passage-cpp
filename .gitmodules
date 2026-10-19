@@ -1,0 +1,4 @@
+[submodule "qlever"]
+	path = qlever
+	url = https://github.com/momo54/qlever.git
+	branch = scan-distinct
