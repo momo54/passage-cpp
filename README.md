@@ -49,8 +49,31 @@ git clone https://github.com/momo54/passage-cpp.git
 cd passage-cpp
 git submodule update --init qlever
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target passage -j $(nproc)
+cmake --build build --target passage -j $(( $(nproc) < 4 ? $(nproc) : 4 ))
 ```
+
+**Not `-j $(nproc)`.** QLever's heaviest translation units —
+`sparqlExpressions`, and `RelationalExpressions.cpp` above all — take two to
+three gigabytes each, so one job per core exhausts anything smaller than a
+workstation and the OOM killer stops the compiler:
+
+```
+c++: fatal error: Killed signal terminated program cc1plus
+```
+
+which looks like a compiler bug and is not one. Budget about three gigabytes a
+job: measured here, `nproc` jobs against 7 GB dies at 85% and two does not;
+and four jobs in 16 GB is what built the Passage fork's JNI bridge, which
+compiles the same QLever, in a Codespace. This repository has been verified in
+an Ubuntu 24.04 container, not yet in a Codespace. `.devcontainer/build-and-test.sh` computes it from
+`/proc/meminfo` rather than leaving it to you.
+
+`-DCHEAPER_COMPILATION=ON` is the other way out, trading run-time performance
+for compile time and memory.
+
+Expect **two to three minutes before anything compiles**: QLever fetches
+abseil, antlr, re2, range-v3, spatialjoin, s2 and opentelemetry at configure
+time. It is not a slow start to the build, it is the download.
 
 **A clone is enough; a fresh `git init` with no commit is not.** QLever fetches
 `spatialjoin`, whose CMake reads git information through
@@ -89,11 +112,11 @@ linking on `ld: library 'jemalloc' not found`.
 ## Loading data
 
 A query needs an index, and an index is built from RDF by `qlever-index`,
-QLever's own indexer. It is not built by default here {D} QLever is added with
-`EXCLUDE_FROM_ALL` {D} so ask for it:
+QLever's own indexer. It is not built by default here — QLever is added with
+`EXCLUDE_FROM_ALL` — so ask for it:
 
 ```bash
-cmake --build build --target qlever-index -j $(nproc)
+cmake --build build --target qlever-index -j 4   # see the note on -j above
 ```
 
 Then, in a directory of your choosing, the six triples of Figure 2 of the
@@ -143,20 +166,23 @@ which prints, verbatim:
 ```
 
 That is the whole idea in twelve lines: three answers, each with the query that
-asks for the rest, and a third evaluation that returns no continuation {D}
+asks for the rest, and a third evaluation that returns no continuation —
 which is what ends the sequence. Without `--loop` it stops after the first,
 which is what a client actually receives.
 
 ## Testing
 
 ```bash
-cmake --build build --target ContinuationTest -j $(nproc)
+cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Six tests, each building its own index from Turtle under `$TMPDIR`, so none of
-them can be skipped for want of data. The one that matters checks that the
-sequence of continuations enumerates the pattern *exactly once* {D} the same
+Twelve tests. `ContinuationTest` builds its own index from Turtle under
+`$TMPDIR`, so none of its seven can be skipped for want of data;
+`AlgebraTest`'s five cover the paused-state nodes that a single triple pattern
+cannot reach — `Bindings`, `Union`, a nested `Slice` — which are the shapes
+a BGP will pause into. The one that matters checks that the
+sequence of continuations enumerates the pattern *exactly once* — the same
 solutions in the same order as an evaluation that was never interrupted, for
 quotas of 1, 2, 3 and 5.
 
