@@ -14,13 +14,17 @@
 //   Slice          `OpSlice`          — a sub-expression resumed at an offset
 //   Pattern        `OpTriple`         — a triple pattern, unmoved
 //   Bindings       `OpJoin(bindAs,…)` — the bindings that led to an iterator,
-//                                      which a nested loop will need
+//                                      which a nested loop needs
+//   Join           `OpJoin`           — a conjunction, written as a group
 //   Union          `OpUnion`          — two paused branches side by side
 //
-// `Bindings` and `Union` are unreachable while the fragment is one triple
-// pattern. They are here because leaving them out would shape the design
-// around the restriction: a BGP pauses as a union of per-pattern states, each
-// carrying the bindings of the loops above it, and that is the next step.
+// ONE DELIBERATE DEVIATION. Passage writes the bindings that led to an
+// iterator as `BIND(<term> AS ?v)`, because that is what Jena's
+// `input.asBindAs()` produces. `Bindings` prints `VALUES ?v { <term> }`
+// instead, which means the same thing for one row and is far easier to read
+// back: QLever's parser hands a `Values` as plain `TripleComponent`s, while a
+// `Bind` carries a `SparqlExpressionPimpl` whose constant would have to be
+// dug out of an expression tree. A kernel has to read what it writes.
 #ifndef PASSAGE_ALGEBRA_H
 #define PASSAGE_ALGEBRA_H
 
@@ -38,7 +42,7 @@ struct Node;
 using Cont = std::shared_ptr<const Node>;
 
 struct Node {
-  enum struct Kind { Done, Slice, Pattern, Bindings, Union };
+  enum struct Kind { Done, Slice, Pattern, Bindings, Join, Union };
   Kind kind;
 
   // Pattern
@@ -47,7 +51,7 @@ struct Node {
   size_t offset = 0;
   // Bindings: `?var` bound to the term it took, as SPARQL text
   std::vector<std::pair<std::string, std::string>> bindings;
-  // Slice, Bindings: one child; Union: two
+  // Slice, Bindings: one child; Join and Union: two
   std::vector<Cont> children;
 };
 
@@ -55,6 +59,12 @@ Cont done();
 Cont pattern(SparqlTripleSimple triple);
 Cont slice(Cont child, size_t offset);
 Cont bindings(std::vector<std::pair<std::string, std::string>> binds, Cont child);
+
+// `OpJoin`: a conjunction, which prints as the two sides in one group. Used by
+// a nested loop's pause for its second branch, where the left side is where
+// the outer scan resumes and the right is the inner pattern *entire* — because
+// when the outer advances, the inner starts over.
+Cont join(Cont left, Cont right);
 
 // `OpUnion` with Passage's rule: two finished branches are finished, and a
 // finished branch beside a live one is just the live one. Without that, a

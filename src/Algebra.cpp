@@ -27,10 +27,17 @@ void writeBody(const Cont& c, std::ostringstream& out) {
       return;
     }
     case Node::Kind::Bindings:
+      // `VALUES` rather than `BIND`, so that reading this back is reading data
+      // instead of an expression; see the header.
       for (const auto& [variable, term] : c->bindings) {
-        out << "BIND(" << term << " AS " << variable << ") ";
+        out << "VALUES " << variable << " { " << term << " } ";
       }
       writeBody(c->children.front(), out);
+      return;
+    case Node::Kind::Join:
+      writeBody(c->children.front(), out);
+      out << ' ';
+      writeBody(c->children.back(), out);
       return;
     case Node::Kind::Union:
       out << "{ ";
@@ -67,6 +74,13 @@ Cont bindings(std::vector<std::pair<std::string, std::string>> binds,
   if (binds.empty()) { return child; }
   return make(Node{Node::Kind::Bindings, {}, 0, std::move(binds),
                    {std::move(child)}});
+}
+
+Cont join(Cont left, Cont right) {
+  if (isDone(left)) { return right; }
+  if (isDone(right)) { return left; }
+  return make(Node{Node::Kind::Join, {}, 0, {},
+                   {std::move(left), std::move(right)}});
 }
 
 Cont unite(Cont left, Cont right) {

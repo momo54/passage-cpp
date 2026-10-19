@@ -220,11 +220,19 @@ quotas of 1, 2, 3 and 5.
 
 ## What it is not
 
-* **Not a BGP.** One pattern only. A basic graph pattern needs a nested loop
-  over several cursors and a continuation that carries one offset per pattern,
-  which is the next step and the first interesting one.
-* **Not an engine.** No `FILTER`, no `OPTIONAL`, no `UNION`, no aggregation. A
-  query outside the fragment is refused by name rather than answered wrongly.
+* **A BGP executes but does not resume yet.** Several patterns are a nested
+  loop, and pausing one produces the continuation of Example 3.10 of the
+  paper: the inner scan where it stands, carrying the outer bindings, UNION
+  the outer scan taken further with the inner pattern entire. That union is
+  how a *pair* of offsets is written in SPARQL. What is missing is the other
+  half: the kernel can write that query and cannot read it back, because
+  `plan()` handles a basic graph pattern and not `UNION`, `VALUES` or a
+  subquery with an `OFFSET`. So a BGP interrupted mid-execution hands you a
+  continuation nothing here consumes. The four shapes are all plain data in
+  QLever's parser, so it is bounded work rather than a search.
+* **Not an engine.** No `FILTER`, no `OPTIONAL`, no `UNION` in the query, no
+  aggregation. Anything outside the fragment is refused by name.
+
 * **Not faster than Passage, as far as anyone has measured.** Nothing here has
   been benchmarked against the Java engine. The numbers quoted above were
   measured on the Java side, and they are the reason to try, not a result of

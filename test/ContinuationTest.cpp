@@ -36,6 +36,33 @@ std::string testGraph() {
 
 std::string all() { return "SELECT * WHERE { ?s ?p ?o }"; }
 
+// The graph of Figure 2 of the Passage paper, and the join of Example 3.10.
+std::string figure2() {
+  return "<http://ex.org/H1> <http://ex.org/type> <http://ex.org/Human> . "
+         "<http://ex.org/H2> <http://ex.org/type> <http://ex.org/Human> . "
+         "<http://ex.org/H3> <http://ex.org/type> <http://ex.org/Human> . "
+         "<http://ex.org/H1> <http://ex.org/occupation> <http://ex.org/O1> . "
+         "<http://ex.org/H1> <http://ex.org/occupation> <http://ex.org/O2> . "
+         "<http://ex.org/H3> <http://ex.org/occupation> <http://ex.org/O3> .";
+}
+
+std::string join2() {
+  return "SELECT * WHERE { ?human <http://ex.org/type> <http://ex.org/Human> . "
+         "?human <http://ex.org/occupation> ?occupation }";
+}
+
+std::vector<std::string> flatten(const std::vector<Solution>& solutions) {
+  std::vector<std::string> flat;
+  for (const auto& solution : solutions) {
+    std::string row;
+    for (const auto& b : solution.bindings) {
+      row += b.variable + "=" + b.text + " ";
+    }
+    flat.push_back(row);
+  }
+  return flat;
+}
+
 // Every solution of `query`, by following the continuations until none comes
 // back. Returns the solutions and how many evaluations it took, which is the
 // sequence Passage would run.
@@ -49,8 +76,8 @@ std::pair<std::vector<std::string>, size_t> follow(const Index& index,
     ++evaluations;
     for (const auto& solution : outcome.solutions) {
       std::string row;
-      for (const auto& [name, value] : solution.bindings) {
-        row += name + "=" + value + " ";
+      for (const auto& b : solution.bindings) {
+        row += b.variable + "=" + b.text + " ";
       }
       flat.push_back(row);
     }
@@ -156,6 +183,54 @@ TEST(Continuation, everyShapeOfTriplePatternIsContinued) {
   }
 }
 
+// A two-pattern BGP: the nested loop QLever has no operator for, and the join
+// Example 3.10 of the Passage paper computes. H1 has two occupations, H3 one,
+// H2 none.
+TEST(Continuation, aNestedLoopEnumeratesTheJoin) {
+  Index index = indexFrom(figure2());
+  Outcome outcome = evaluate(index, join2(), Quota{100});
+  ASSERT_EQ(outcome.solutions.size(), 3u);
+  EXPECT_FALSE(outcome.continuation.has_value());
+  EXPECT_EQ(flatten(outcome.solutions),
+            (std::vector<std::string>{
+                "?human=<http://ex.org/H1> ?occupation=<http://ex.org/O1> ",
+                "?human=<http://ex.org/H1> ?occupation=<http://ex.org/O2> ",
+                "?human=<http://ex.org/H3> ?occupation=<http://ex.org/O3> "}));
+}
+
+// The progress condition, which a join is the first thing to threaten: an
+// evaluation must emit at least one solution, or the next one is identical and
+// the sequence never terminates.
+//
+// It failed here first. `ScanIterator::next` counted every match against the
+// quota, so the outer scan's intermediate bindings spent it: a quota of one
+// returned ZERO solutions and paused. With a single pattern each match is a
+// solution, so nothing showed it.
+TEST(Continuation, aJoinMakesProgressRatherThanSpendingTheQuotaOnIntermediates) {
+  Index index = indexFrom(figure2());
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{3}}) {
+    Outcome outcome = evaluate(index, join2(), Quota{quota});
+    EXPECT_GE(outcome.solutions.size(), 1u)
+        << "quota " << quota << " produced nothing, so it cannot terminate";
+  }
+}
+
+// The paused state of a nested loop is Example 3.10: finish the inner scan
+// where it stands, then take the outer one further with the inner pattern
+// entire. Checked as text, because this is what a client receives.
+TEST(Continuation, aPausedNestedLoopIsExampleThreeTen) {
+  Index index = indexFrom(figure2());
+  Outcome outcome = evaluate(index, join2(), Quota{1});
+  ASSERT_TRUE(outcome.continuation.has_value());
+  EXPECT_EQ(*outcome.continuation,
+            "SELECT * WHERE { { { SELECT * WHERE { "
+            "VALUES ?human { <http://ex.org/H1> } "
+            "?human <http://ex.org/occupation> ?occupation . } OFFSET 1 } }"
+            " UNION { { SELECT * WHERE { "
+            "?human <http://ex.org/type> <http://ex.org/Human> . } OFFSET 1 }"
+            " ?human <http://ex.org/occupation> ?occupation . } }");
+}
+
 // A pattern whose subject does not occur in the vocabulary has no solutions,
 // and no continuation. This is the trap the Java backend fell into: an unknown
 // value became a wildcard and matched everything.
@@ -179,9 +254,12 @@ TEST(Continuation, whatIsOutsideTheFragmentIsRefusedByName) {
       return std::string{e.what()};
     }
   };
-  EXPECT_THAT(why("SELECT * WHERE { ?s <p> ?o . ?o <q> ?x }"),
-              HasSubstr("one triple pattern"));
+  // A BGP of several patterns is no longer outside it: that is what the
+  // nested loop added. What is still refused is every other graph pattern.
+  EXPECT_EQ(why("SELECT * WHERE { ?s <p> ?o . ?o <q> ?x }"), "no exception");
   EXPECT_THAT(why("SELECT * WHERE { ?s <p> ?o OPTIONAL { ?s <q> ?x } }"),
+              HasSubstr("one triple pattern"));
+  EXPECT_THAT(why("SELECT * WHERE { { ?s <p> ?o } UNION { ?s <q> ?x } }"),
               HasSubstr("one triple pattern"));
   EXPECT_THAT(why("SELECT * WHERE { ?s ?p ?o } LIMIT 3"), HasSubstr("LIMIT"));
   EXPECT_THAT(why(all(), 0), HasSubstr("never makes progress"));

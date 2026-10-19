@@ -61,8 +61,8 @@ int main(int argc, char** argv) {
                 << " solutions\n";
       for (const auto& solution : outcome.solutions) {
         std::cout << "   ";
-        for (const auto& [name, value] : solution.bindings) {
-          std::cout << name << '=' << value << ' ';
+        for (const auto& b : solution.bindings) {
+          std::cout << b.variable << '=' << b.text << ' ';
         }
         std::cout << '\n';
       }

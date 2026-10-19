@@ -57,17 +57,47 @@ TEST(Algebra, aSliceBelowTheRootBecomesASubquery) {
 }
 
 // The bindings that led to an iterator, which a nested loop has to carry so
-// that the resumed query produces the same solutions. Passage writes them as
-// `input.asBindAs()`.
-TEST(Algebra, bindingsAreWrittenAsBind) {
+// that the resumed query produces the same solutions. Passage writes them with
+// `input.asBindAs()`, hence `BIND`; this writes `VALUES`, which says the same
+// for one row and is readable without walking an expression tree.
+TEST(Algebra, bindingsAreWrittenAsValues) {
   Cont c = bindings({{"?s", "<http://ex.org/H1>"}},
                     pattern(tp("?s", "<occupation>", "?o")));
   EXPECT_EQ(asSparql(c),
-            "SELECT * WHERE { BIND(<http://ex.org/H1> AS ?s)"
+            "SELECT * WHERE { VALUES ?s { <http://ex.org/H1> }"
             " ?s <occupation> ?o . }");
-  // No bindings is not an empty BIND, it is the child itself.
+  // No bindings is not an empty `VALUES`, it is the child itself.
   Cont bare = pattern(tp("?s", "<p>", "?o"));
   EXPECT_EQ(asSparql(bindings({}, bare)), asSparql(bare));
+}
+
+// A conjunction prints as one group, and a finished side disappears rather
+// than becoming an empty one.
+TEST(Algebra, aJoinIsAGroupAndCollapsesWhenASideIsDone) {
+  Cont c = join(pattern(tp("?s", "<p>", "?o")), pattern(tp("?o", "<q>", "?x")));
+  EXPECT_EQ(asSparql(c), "SELECT * WHERE { ?s <p> ?o . ?o <q> ?x . }");
+
+  Cont one = pattern(tp("?s", "<p>", "?o"));
+  EXPECT_EQ(asSparql(join(done(), one)), asSparql(one));
+  EXPECT_EQ(asSparql(join(one, done())), asSparql(one));
+}
+
+// The shape a two-pattern BGP pauses into, which is Example 3.10 of the
+// Passage paper: finish the inner scan where it stands, then take the outer
+// one further with the inner pattern entire.
+TEST(Algebra, aPausedNestedLoopIsPassagesExampleShape) {
+  auto inner = tp("?human", "<occupation>", "?occupation");
+  auto outer = tp("?human", "<type>", "<Human>");
+  Cont paused = unite(
+      slice(bindings({{"?human", "<H3>"}}, pattern(inner)), 0),
+      join(slice(pattern(outer), 2), pattern(inner)));
+  EXPECT_EQ(asSparql(paused),
+            "SELECT * WHERE { "
+            "{ { SELECT * WHERE { VALUES ?human { <H3> } "
+            "?human <occupation> ?occupation . } OFFSET 0 } }"
+            " UNION "
+            "{ { SELECT * WHERE { ?human <type> <Human> . } OFFSET 2 }"
+            " ?human <occupation> ?occupation . } }");
 }
 
 // Two live branches side by side.

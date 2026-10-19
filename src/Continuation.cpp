@@ -6,6 +6,7 @@
 
 #include "Algebra.h"
 #include "Iterator.h"
+#include "JoinIterator.h"
 #include "ScanIterator.h"
 #include "parser/GraphPatternOperation.h"
 #include "parser/ParsedQuery.h"
@@ -16,9 +17,10 @@
 namespace passage {
 namespace {
 
-// The one triple pattern of a query, plus the offset it resumes from.
+// The patterns of a query's basic graph pattern, plus the offset it resumes
+// from. More than one makes a nested loop.
 struct Plan {
-  SparqlTripleSimple triple;
+  std::vector<SparqlTripleSimple> triples;
   size_t offset = 0;
 };
 
@@ -38,19 +40,19 @@ Plan plan(const ParsedQuery& parsed) {
         "this kernel handles one triple pattern; the query's body is some "
         "other graph pattern (OPTIONAL, UNION, SERVICE, a subquery, ...)");
   }
-  if (bgp->_triples.size() != 1) {
-    throw std::runtime_error(
-        "this kernel handles one triple pattern; this basic graph pattern has " +
-        std::to_string(bgp->_triples.size()) +
-        ". A BGP needs a nested loop over several scans, and a continuation "
-        "that unions one state per pattern, which is the next step");
+  if (bgp->_triples.empty()) {
+    throw std::runtime_error("the query's body has no triple pattern");
   }
   if (parsed._limitOffset._limit.has_value()) {
     throw std::runtime_error(
         "a LIMIT in the query would be a second quota beside the kernel's own; "
         "pass the quota to the kernel instead");
   }
-  return Plan{bgp->_triples.front().getSimple(), parsed._limitOffset._offset};
+  std::vector<SparqlTripleSimple> triples;
+  for (const auto& triple : bgp->_triples) {
+    triples.push_back(triple.getSimple());
+  }
+  return Plan{std::move(triples), parsed._limitOffset._offset};
 }
 
 }  // namespace
@@ -67,10 +69,17 @@ Outcome evaluate(const Index& index, const std::string& query,
   Plan p = plan(SparqlParser::parseQuery(&index.encodedIriManager(), query));
 
   Context context{quota.maxSolutions, 0, false};
-  // The operator tree. One node today; the shape is what lets a join be added
-  // as an operator rather than as a rewrite of this function.
-  std::unique_ptr<Iterator> root =
-      std::make_unique<ScanIterator>(index, p.triple, p.offset, context);
+  // The operator tree: a left-deep chain of nested loops, one scan per
+  // pattern. The query's `OFFSET` belongs to the first scan, which is the
+  // outermost loop; a continuation that resumes an inner loop carries its
+  // offset in a subquery instead, which is why the chain below gives the
+  // offset to the leftmost scan and zero to the others.
+  std::unique_ptr<Iterator> root = std::make_unique<ScanIterator>(
+      index, p.triples.front(), std::vector<Binding>{}, p.offset, context);
+  for (size_t i = 1; i < p.triples.size(); ++i) {
+    root = std::make_unique<JoinIterator>(index, std::move(root),
+                                          p.triples[i], context);
+  }
 
   Outcome outcome;
   outcome.startedAt = p.offset;
@@ -78,6 +87,11 @@ Outcome evaluate(const Index& index, const std::string& query,
   try {
     while (root->hasNext()) {
       outcome.solutions.push_back(root->next());
+      // The quota counts solutions, which is what the progress condition is
+      // about: an evaluation must emit at least one, or the sequence does not
+      // terminate. Counting a scan's matches instead lets a join spend the
+      // quota on intermediate bindings.
+      ++context.produced;
     }
     // Ran to exhaustion inside the quota, so there is nothing to continue.
     // `pause()` would answer the same; asking it would be a second scan of

@@ -26,12 +26,23 @@
 #include <vector>
 
 #include "Algebra.h"
+#include "global/Id.h"
 
 namespace passage {
 
+// One binding of one variable. The `Id` is carried beside the text because a
+// nested loop binds its inner scan with it: resolving the text back through
+// the vocabulary for every inner scan would be a lookup per outer solution,
+// which is the shape of cost this project has measured before.
+struct Binding {
+  std::string variable;
+  std::string text;
+  Id id;
+};
+
 // One solution: variables in the order the pattern writes them.
 struct Solution {
-  std::vector<std::pair<std::string, std::string>> bindings;
+  std::vector<Binding> bindings;
 };
 
 // What the engine is allowed to do before it has to pause, and what it has
