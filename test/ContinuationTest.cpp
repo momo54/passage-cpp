@@ -114,6 +114,28 @@ TEST(Continuation, theWholeSequenceEnumeratesThePatternExactlyOnce) {
   }
 }
 
+// The boundary: a quota spent exactly on the last solution yields no
+// continuation, because there is nothing left to continue.
+//
+// NOTE: this does *not* pin the order of the two conditions in
+// `ScanIterator::hasNext`, which was the claim this comment made first.
+// Checked by reversing them: the test still passes, because `pause()` answers
+// `Done` on an exhausted cursor and so catches the case anyway. The ordering
+// is defensive — it avoids throwing on the common path where a scan has just
+// finished — and the observable behaviour is the same either way.
+TEST(Continuation, aQuotaSpentExactlyOnTheLastSolutionIsNotAPause) {
+  Index index = indexFrom(testGraph());
+  Outcome outcome = evaluate(index, all(), Quota{6});
+  EXPECT_EQ(outcome.solutions.size(), 6u);
+  EXPECT_FALSE(outcome.continuation.has_value())
+      << "the scan was exhausted, so there is nothing to continue";
+
+  // One short, and it is a pause.
+  Outcome short_ = evaluate(index, all(), Quota{5});
+  EXPECT_EQ(short_.solutions.size(), 5u);
+  EXPECT_TRUE(short_.continuation.has_value());
+}
+
 // All four shapes, since the permutation the cursor picks differs for each and
 // the offsets have to mean the same thing in all of them.
 TEST(Continuation, everyShapeOfTriplePatternIsContinued) {

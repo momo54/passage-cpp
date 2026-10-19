@@ -21,6 +21,10 @@
 //     is the fork's one patch to QLever;
 //   * `ScanCursor::current()` reports where it stopped, which is the state the
 //     continuation has to carry.
+//
+// The execution is a Volcano tree, as Passage's is: see `Iterator.h` for the
+// interface and the stopping mechanism, `ScanIterator.h` for the one operator,
+// and `Algebra.h` for the paused state and how it is printed as SPARQL.
 #ifndef PASSAGE_CONTINUATION_H
 #define PASSAGE_CONTINUATION_H
 
@@ -29,6 +33,7 @@
 #include <string>
 #include <vector>
 
+#include "Iterator.h"
 #include "index/Index.h"
 #include "index/LocatedTriples.h"
 
@@ -39,12 +44,6 @@ namespace passage {
 // a quota of zero would never terminate and is rejected.
 struct Quota {
   size_t maxSolutions = 1000;
-};
-
-// One solution: the variables of the pattern, in the order they occur in it,
-// bound to the strings they matched.
-struct Solution {
-  std::vector<std::pair<std::string, std::string>> bindings;
 };
 
 // What one evaluation produced, and how to ask for the rest.
