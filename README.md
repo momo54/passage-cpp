@@ -14,6 +14,37 @@ This is that loop for the case where it is simplest, and only that case: a
 query whose body is one triple pattern. The state a continuation carries is
 then an `OFFSET`.
 
+## Everything at once
+
+The sections below take it apart; this does the whole of it, and is the only
+path that has been run end to end on a machine with nothing installed:
+
+```bash
+git clone https://github.com/momo54/passage-cpp.git
+cd passage-cpp
+.devcontainer/install-deps.sh          # Ubuntu; apt, no devcontainer features
+.devcontainer/build-and-test.sh
+```
+
+It initialises the submodule, configures, builds the kernel, the indexer and
+both test suites, loads the six triples of Figure 2, runs a continuation
+sequence and runs the twelve tests, printing the elapsed time at each step. It
+picks its own parallelism from `/proc/meminfo`; `JOBS=n` overrides and
+`WORK=<dir>` moves the demo index, which otherwise goes to `~/passage-demo`.
+
+Verified in a fresh `ubuntu:24.04` container that clones from GitHub: 159 s of
+configure, then the build, then the sequence and twelve green tests. That
+container showed 7 GB, so it built with two jobs; a 16 GB Codespace gets four.
+
+In a Codespace it is the same two commands, `install-deps.sh` having already
+run as `onCreateCommand`:
+
+```bash
+gh codespace create -R momo54/passage-cpp -m standardLinux32gb
+# then, inside
+.devcontainer/build-and-test.sh
+```
+
 ## Why it exists
 
 Passage is written in Java and reaches QLever through a JNI bridge. Measured on
@@ -65,8 +96,9 @@ which looks like a compiler bug and is not one. Budget about three gigabytes a
 job: measured here, `nproc` jobs against 7 GB dies at 85% and two does not;
 and four jobs in 16 GB is what built the Passage fork's JNI bridge, which
 compiles the same QLever, in a Codespace. This repository has been verified in
-an Ubuntu 24.04 container, not yet in a Codespace. `.devcontainer/build-and-test.sh` computes it from
-`/proc/meminfo` rather than leaving it to you.
+an Ubuntu 24.04 container, not yet in a Codespace. If you would rather not
+think about it, `.devcontainer/build-and-test.sh` computes it for you; see
+*Everything at once* above.
 
 `-DCHEAPER_COMPILATION=ON` is the other way out, trading run-time performance
 for compile time and memory.
