@@ -79,7 +79,10 @@ Outcome evaluate(const Index& index, const std::string& query,
         "a quota of zero solutions never makes progress, so the sequence "
         "would not terminate");
   }
-  Pattern pattern = readPattern(SparqlParser::parseQuery(query));
+  // The parser needs the index's encoded-IRI manager, since some IRIs are
+  // encoded into the `Id` itself rather than put in the vocabulary.
+  Pattern pattern =
+      readPattern(SparqlParser::parseQuery(&index.encodedIriManager(), query));
 
   // The variables to report, in the order the pattern writes them. A pattern
   // may repeat one (`?x ?p ?x`); the first occurrence is the one reported.
