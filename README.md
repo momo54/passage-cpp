@@ -45,18 +45,46 @@ deep `OFFSET` cost a metadata walk instead of a scan.
 ## Building
 
 ```bash
+git clone https://github.com/momo54/passage-cpp.git
+cd passage-cpp
 git submodule update --init qlever
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target passage -j $(nproc)
 ```
 
-On macOS the configure line needs the flags the fork's own build script uses
-(`ICU_ROOT`, `OPENSSL_ROOT_DIR`, `-DMETA_NO_STD_FORWARD_DECLARATIONS`, and a
-Homebrew `abseil` unlinked); see `passage-qlever/build-native.sh` in the
-Passage fork, which has them in one place.
+**A clone is enough; a fresh `git init` with no commit is not.** QLever fetches
+`spatialjoin`, whose CMake reads git information through
+`GetGitRevisionDescription.cmake`, which walks up to the nearest `.git` —
+under `build/_deps/` that is this repository's. With no commit the branch has
+no ref file to read, and configuring ends on `file failed to open for reading:
+.../git-data/head-ref`. Commit first.
+
+On macOS, Apple Clang needs the flags the Passage fork's build script uses, and
+a Homebrew `abseil` has to be unlinked or it shadows the one QLever pins:
+
+```bash
+brew unlink abseil        # reversible with `brew link abseil`
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DUSE_PARALLEL=false \
+  -D_NO_TIMING_TESTS=ON -DCOMPILER_SUPPORTS_MARCH_NATIVE=FALSE \
+  -DICU_ROOT="$(brew --prefix icu4c)" \
+  -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+  -DCMAKE_CXX_FLAGS=-DMETA_NO_STD_FORWARD_DECLARATIONS
+```
 
 QLever is added with `EXCLUDE_FROM_ALL`, so its tests and benchmarks are
-defined but not built — only what `passage` links.
+defined but not built — only what a target here links. That is also why
+`qlever-index`, which loads data, has to be asked for by name.
+
+Two blocks in `CMakeLists.txt` exist because almost everything QLever
+configures is scoped to its own directory, and a project that adds it as a
+subdirectory is its *parent*. The `find_package` calls are repeated here so
+that `OpenSSL::SSL` and its kin exist in this scope; and QLever's
+`INCLUDE_DIRECTORIES` and `LINK_DIRECTORIES` properties are read off its
+directory and applied to the targets. Without the first, generating fails on
+`Target "passage" links to OpenSSL::SSL but the target was not found`; without
+the second, compiling fails on `'range/v3/all.hpp' file not found` and then
+linking on `ld: library 'jemalloc' not found`.
 
 ## Loading data
 
