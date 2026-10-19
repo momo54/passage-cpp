@@ -23,11 +23,31 @@ step "configure"
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
 step "build the kernel, the indexer and the tests"
-# `JOBS` overrides, because QLever has translation units that take a couple of
-# gigabytes and one job per core can exhaust a small machine. The compiler is
-# then killed by the OOM killer, which reads as `c++: fatal error: Killed
-# signal terminated program cc1plus` and is not a compiler bug.
-JOBS=${JOBS:-$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 4 )}
+# The parallelism is chosen from MEMORY, not from cores. QLever's heaviest
+# translation units — `sparqlExpressions`, and `RelationalExpressions.cpp`
+# above all — take between two and three gigabytes each, so one job per core
+# exhausts a small machine and the OOM killer stops the compiler. That reads as
+#
+#   c++: fatal error: Killed signal terminated program cc1plus
+#
+# which looks like a compiler bug and is not one. Measured: six jobs in twelve
+# gigabytes dies there; the budget below gives four, which does not.
+#
+# `JOBS=n` overrides, and `-DCHEAPER_COMPILATION=ON` on the configure line is
+# the other way out — it uses type erasure to cut compile time and memory, at
+# the cost of run-time performance, so it is not the default here.
+cores=$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 4 )
+if [ -r /proc/meminfo ]; then
+  mem_gb=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
+elif command -v sysctl >/dev/null 2>&1; then
+  mem_gb=$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))
+else
+  mem_gb=8
+fi
+by_memory=$(( mem_gb / 3 ))
+[ "$by_memory" -ge 1 ] || by_memory=1
+JOBS=${JOBS:-$(( cores < by_memory ? cores : by_memory ))}
+echo "== $cores cores, ${mem_gb}GB, so -j $JOBS (three gigabytes a job)"
 cmake --build build --target passage qlever-index ContinuationTest AlgebraTest -j "$JOBS"
 
 step "load six triples"
