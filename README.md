@@ -58,16 +58,79 @@ Passage fork, which has them in one place.
 QLever is added with `EXCLUDE_FROM_ALL`, so its tests and benchmarks are
 defined but not built — only what `passage` links.
 
+## Loading data
+
+A query needs an index, and an index is built from RDF by `qlever-index`,
+QLever's own indexer. It is not built by default here {D} QLever is added with
+`EXCLUDE_FROM_ALL` {D} so ask for it:
+
+```bash
+cmake --build build --target qlever-index -j $(nproc)
+```
+
+Then, in a directory of your choosing, the six triples of Figure 2 of the
+Passage paper:
+
+```bash
+mkdir -p ~/passage-demo && cd ~/passage-demo
+cat > fig2.ttl <<'TTL'
+<http://ex.org/H1> <http://ex.org/type> <http://ex.org/Human> .
+<http://ex.org/H2> <http://ex.org/type> <http://ex.org/Human> .
+<http://ex.org/H3> <http://ex.org/type> <http://ex.org/Human> .
+<http://ex.org/H1> <http://ex.org/occupation> <http://ex.org/O1> .
+<http://ex.org/H1> <http://ex.org/occupation> <http://ex.org/O2> .
+<http://ex.org/H3> <http://ex.org/occupation> <http://ex.org/O3> .
+TTL
+~/passage-cpp/build/qlever/qlever-index -i fig2 -f fig2.ttl -F ttl -p true
+```
+
+`-i` is the basename every index file gets, `-F` the format (`ttl`, `nt`, `nq`,
+`trig`), and `-p true` precomputes the patterns. It ends on
+`INFO: Index build completed` and leaves `fig2.index.pso`,
+`fig2.meta-data.json` and a dozen more beside them. **The basename, not a file,
+is what `--index` takes.**
+
 ## Running
 
 ```bash
-build/passage --index $HOME/qlever-fig2/fig2 \
+~/passage-cpp/build/passage --index ~/passage-demo/fig2 \
   --query 'SELECT * WHERE { ?human <http://ex.org/type> <http://ex.org/Human> }' \
   --quota 1 --loop
 ```
 
-Each evaluation prints its solutions and the continuation that follows it.
-Without `--loop` it stops after one, which is what a client receives.
+which prints, verbatim:
+
+```
+== evaluation 1, from offset 0: 1 solutions
+   ?human=<http://ex.org/H1>
+== continuation:
+   SELECT * WHERE { ?human <http://ex.org/type> <http://ex.org/Human> } OFFSET 1
+== evaluation 2, from offset 1: 1 solutions
+   ?human=<http://ex.org/H2>
+== continuation:
+   SELECT * WHERE { ?human <http://ex.org/type> <http://ex.org/Human> } OFFSET 2
+== evaluation 3, from offset 2: 1 solutions
+   ?human=<http://ex.org/H3>
+== done: 3 solutions in 3 evaluations
+```
+
+That is the whole idea in twelve lines: three answers, each with the query that
+asks for the rest, and a third evaluation that returns no continuation {D}
+which is what ends the sequence. Without `--loop` it stops after the first,
+which is what a client actually receives.
+
+## Testing
+
+```bash
+cmake --build build --target ContinuationTest -j $(nproc)
+./build/ContinuationTest
+```
+
+Six tests, each building its own index from Turtle under `$TMPDIR`, so none of
+them can be skipped for want of data. The one that matters checks that the
+sequence of continuations enumerates the pattern *exactly once* {D} the same
+solutions in the same order as an evaluation that was never interrupted, for
+quotas of 1, 2, 3 and 5.
 
 ## What it is not
 
