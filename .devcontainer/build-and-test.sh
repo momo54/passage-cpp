@@ -30,8 +30,18 @@ step "build the kernel, the indexer and the tests"
 #
 #   c++: fatal error: Killed signal terminated program cc1plus
 #
-# which looks like a compiler bug and is not one. Measured: six jobs in twelve
-# gigabytes dies there; the budget below gives four, which does not.
+# which looks like a compiler bug and is not one.
+#
+# The anchor is a measurement, not arithmetic: the Passage fork's JNI bridge
+# built in a Codespace with four cores and 16GB, at `nproc` = 4 jobs, so four
+# gigabytes a job compiles QLever's heaviest units. Three is the budget below,
+# slightly tighter, and it reproduces that four on a 16GB Codespace.
+#
+# What NOT to trust: the memory a container was started with. `docker run
+# --memory=12g` on Docker Desktop still shows its VM's `MemTotal` here, 7GB,
+# and `--cpus=6` is a CFS quota that leaves `nproc` reading 8. Reading
+# `/proc/meminfo` is therefore right and reading the flags would be wrong: six
+# jobs against that 7GB is what died, at 1.2 gigabytes a job.
 #
 # `JOBS=n` overrides, and `-DCHEAPER_COMPILATION=ON` on the configure line is
 # the other way out — it uses type erasure to cut compile time and memory, at
