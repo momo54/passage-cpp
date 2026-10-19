@@ -1,0 +1,27 @@
+{
+  "name": "passage-cpp",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+
+  // No "features". A feature version that does not resolve fails the whole
+  // container build and Codespaces substitutes its recovery container, where
+  // the workspace is mounted but the image is not the one asked for — which
+  // reads, three steps later, as a missing `apt-get`. Everything here comes
+  // from apt in `install-deps.sh`, so there is nothing left to resolve.
+
+  // The C++ build is the constraint. QLever is template-heavy enough that a
+  // 2-core/8GB machine swaps; this is exactly `standardLinux32gb`, and asking
+  // for more storage than it has would hide it and force the 8-core machine.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
+
+  "onCreateCommand": ".devcontainer/install-deps.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools", "ms-vscode.cmake-tools"]
+    }
+  }
+}
