@@ -163,6 +163,82 @@ TEST(Continuation, aQuotaSpentExactlyOnTheLastSolutionIsNotAPause) {
   EXPECT_TRUE(short_.continuation.has_value());
 }
 
+// The property, for a join: the sequence of continuations enumerates the join
+// exactly once, whatever the quota. This is what closes the loop — the kernel
+// reads back the union of a subquery and a `VALUES` that it wrote itself.
+//
+// It compares SOLUTIONS and not counts, which matters: the first version of
+// this compared counts, and a resumed inner branch that had lost `?human`
+// from every solution still counted three.
+TEST(Continuation, theSequenceEnumeratesAJoinExactlyOnce) {
+  Index index = indexFrom(figure2());
+  auto [uninterrupted, once] = follow(index, join2(), 1000);
+  ASSERT_EQ(once, 1u);
+  ASSERT_EQ(uninterrupted.size(), 3u);
+  for (const std::string& row : uninterrupted) {
+    EXPECT_THAT(row, HasSubstr("?human=")) << "a solution lost a variable";
+    EXPECT_THAT(row, HasSubstr("?occupation="));
+  }
+
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{3}, size_t{5}}) {
+    auto [pieces, evaluations] = follow(index, join2(), quota);
+    EXPECT_EQ(pieces, uninterrupted)
+        << "with a quota of " << quota << ", in " << evaluations
+        << " evaluations";
+  }
+}
+
+// Data chosen so that a pause lands INSIDE the left branch of a resumed
+// union, with solutions still left in it. Figure 2 never reaches that path:
+// its inner scan has at most one match left when a continuation resumes, so
+// the pause always happens in the right branch instead, and a union that
+// forgot to re-emit its unstarted branch went undetected.
+//
+// Here `<b>` has three objects, so resuming at offset 1 leaves two, and a
+// quota of one pauses with the left branch live and the right not yet started.
+TEST(Continuation, aPauseInsideTheLeftBranchKeepsTheRightOne) {
+  Index index = indexFrom(
+      "<a> <p> <b> . <a2> <p> <b2> . "
+      "<b> <q> <1> . <b> <q> <2> . <b> <q> <3> . <b2> <q> <9> .");
+  std::string q = "SELECT * WHERE { ?s <p> ?m . ?m <q> ?n }";
+
+  auto [whole, once] = follow(index, q, 1000);
+  ASSERT_EQ(once, 1u);
+  ASSERT_EQ(whole.size(), 4u) << "three objects for <b>, one for <b2>";
+  // Every solution carries all three variables, including `?s`, which the
+  // inner pattern does not mention and which therefore only survives if the
+  // continuation saves it.
+  for (const std::string& row : whole) {
+    EXPECT_THAT(row, HasSubstr("?s="));
+    EXPECT_THAT(row, HasSubstr("?m="));
+    EXPECT_THAT(row, HasSubstr("?n="));
+  }
+
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{3}, size_t{4}}) {
+    auto [pieces, evaluations] = follow(index, q, quota);
+    EXPECT_EQ(pieces, whole) << "quota " << quota << ", " << evaluations
+                             << " evaluations";
+  }
+}
+
+// A join of three patterns, so that the nesting is two deep and a paused
+// continuation holds a union inside a union.
+TEST(Continuation, aThreePatternJoinAlsoRoundTrips) {
+  Index index = indexFrom(
+      "<a> <p> <b> . <a> <p> <c> . <b> <q> <x> . <c> <q> <y> . "
+      "<x> <r> <1> . <y> <r> <2> .");
+  std::string q =
+      "SELECT * WHERE { ?s <p> ?m . ?m <q> ?n . ?n <r> ?o }";
+  auto [whole, once] = follow(index, q, 1000);
+  ASSERT_EQ(once, 1u);
+  ASSERT_EQ(whole.size(), 2u);
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{3}}) {
+    auto [pieces, evaluations] = follow(index, q, quota);
+    EXPECT_EQ(pieces, whole) << "quota " << quota << ", " << evaluations
+                             << " evaluations";
+  }
+}
+
 // All four shapes, since the permutation the cursor picks differs for each and
 // the offsets have to mean the same thing in all of them.
 TEST(Continuation, everyShapeOfTriplePatternIsContinued) {
@@ -254,13 +330,24 @@ TEST(Continuation, whatIsOutsideTheFragmentIsRefusedByName) {
       return std::string{e.what()};
     }
   };
-  // A BGP of several patterns is no longer outside it: that is what the
-  // nested loop added. What is still refused is every other graph pattern.
+  // The fragment is now what a continuation is made of, so a BGP and a UNION
+  // of two groups are inside it: the kernel has to read what it writes.
   EXPECT_EQ(why("SELECT * WHERE { ?s <p> ?o . ?o <q> ?x }"), "no exception");
+  EXPECT_EQ(why("SELECT * WHERE { { ?s <p> ?o } UNION { ?s <q> ?x } }"),
+            "no exception");
+  EXPECT_EQ(why("SELECT * WHERE { VALUES ?s { <a> } ?s <p> ?o }"),
+            "no exception");
+  // What is outside it is still refused, by what it is.
   EXPECT_THAT(why("SELECT * WHERE { ?s <p> ?o OPTIONAL { ?s <q> ?x } }"),
-              HasSubstr("one triple pattern"));
-  EXPECT_THAT(why("SELECT * WHERE { { ?s <p> ?o } UNION { ?s <q> ?x } }"),
-              HasSubstr("one triple pattern"));
+              HasSubstr("not one of their parts"));
+  EXPECT_THAT(why("SELECT * WHERE { GRAPH <g> { ?s <p> ?o } }"),
+              HasSubstr("GRAPH"));
+  EXPECT_THAT(why("SELECT * WHERE { VALUES (?s ?o) { (<a> <b>) } ?s <p> ?o }"),
+              HasSubstr("VALUES clause of 2 variables"));
+  // An OFFSET over a join would be an offset into its solutions, which a
+  // continuation never writes: it writes a union of two offsets instead.
+  EXPECT_THAT(why("SELECT * WHERE { ?s <p> ?o . ?o <q> ?x } OFFSET 2"),
+              HasSubstr("OFFSET over a basic graph pattern"));
   EXPECT_THAT(why("SELECT * WHERE { ?s ?p ?o } LIMIT 3"), HasSubstr("LIMIT"));
   EXPECT_THAT(why(all(), 0), HasSubstr("never makes progress"));
 }

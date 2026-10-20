@@ -209,27 +209,34 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Twelve tests. `ContinuationTest` builds its own index from Turtle under
-`$TMPDIR`, so none of its seven can be skipped for want of data;
-`AlgebraTest`'s five cover the paused-state nodes that a single triple pattern
-cannot reach — `Bindings`, `Union`, a nested `Slice` — which are the shapes
-a BGP will pause into. The one that matters checks that the
+Twenty tests. `ContinuationTest` builds its own index from Turtle under
+`$TMPDIR`, so none of its thirteen can be skipped for want of data;
+`AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
+the exact SPARQL of Example 3.10.
+
+Two of them exist because a test that cannot fail says nothing. The sequence
+is compared by its SOLUTIONS rather than by their number, since a resumed
+inner branch that had lost `?human` from every solution still counted three.
+And `aPauseInsideTheLeftBranchKeepsTheRightOne` uses data where an inner scan
+has three matches, because Figure 2 never pauses *inside* the left branch of a
+resumed union — with that data, a union that forgot to re-emit its unstarted
+branch returned three solutions out of four and called itself done. The one that matters checks that the
 sequence of continuations enumerates the pattern *exactly once* — the same
 solutions in the same order as an evaluation that was never interrupted, for
 quotas of 1, 2, 3 and 5.
 
 ## What it is not
 
-* **A BGP executes but does not resume yet.** Several patterns are a nested
-  loop, and pausing one produces the continuation of Example 3.10 of the
-  paper: the inner scan where it stands, carrying the outer bindings, UNION
-  the outer scan taken further with the inner pattern entire. That union is
-  how a *pair* of offsets is written in SPARQL. What is missing is the other
-  half: the kernel can write that query and cannot read it back, because
-  `plan()` handles a basic graph pattern and not `UNION`, `VALUES` or a
-  subquery with an `OFFSET`. So a BGP interrupted mid-execution hands you a
-  continuation nothing here consumes. The four shapes are all plain data in
-  QLever's parser, so it is bounded work rather than a search.
+* **A BGP resumes, and that is as far as it goes.** Several patterns are a
+  nested loop; pausing one produces the continuation of Example 3.10 of the
+  paper — the inner scan where it stands carrying the outer bindings, UNION
+  the outer scan taken further with the inner pattern entire — and the kernel
+  reads that back, so the sequence terminates on the same solutions in the same
+  order whatever the quota. The union is how a *pair* of offsets is written in
+  SPARQL, and the reader therefore accepts exactly what the writer emits: a
+  group, `VALUES`, a subquery with an `OFFSET`, a basic graph pattern, a
+  `UNION` of two groups, and a plain nested group. Anything else is refused by
+  what it is.
 * **Not an engine.** No `FILTER`, no `OPTIONAL`, no `UNION` in the query, no
   aggregation. Anything outside the fragment is refused by name.
 

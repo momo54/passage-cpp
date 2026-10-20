@@ -7,14 +7,14 @@ namespace {
 
 using Component = qlever::ScanCursor::Component;
 
-// The `Id` the loops above fixed for this component, if any.
-std::optional<Id> boundId(const TripleComponent& c,
-                          const std::vector<Binding>& bound) {
+// The term the loops above, or a `VALUES` clause, fixed for this component.
+std::optional<TripleComponent> boundTerm(const TripleComponent& c,
+                                         const std::vector<Binding>& bound) {
   if (!c.isVariable()) { return std::nullopt; }
   const std::string& name = c.getVariable().name();
   auto it = std::find_if(bound.begin(), bound.end(),
                          [&name](const Binding& b) { return b.variable == name; });
-  return it == bound.end() ? std::nullopt : std::optional{it->id};
+  return it == bound.end() ? std::nullopt : std::optional{it->term};
 }
 
 }  // namespace
@@ -36,9 +36,7 @@ ScanIterator::ScanIterator(const Index& index, SparqlTripleSimple pattern,
   // loop's binding free: no text is parsed and no vocabulary is consulted.
   auto resolve =
       [this](const TripleComponent& c) -> std::optional<TripleComponent> {
-    if (auto fromLoop = boundId(c, bound_)) {
-      return TripleComponent{fromLoop.value()};
-    }
+    if (auto fixed = boundTerm(c, bound_)) { return fixed; }
     if (c.isVariable()) { return std::nullopt; }
     return c;
   };
@@ -46,7 +44,7 @@ ScanIterator::ScanIterator(const Index& index, SparqlTripleSimple pattern,
   auto note = [this](const TripleComponent& c, Component which) {
     if (!c.isVariable()) { return; }
     const std::string& name = c.getVariable().name();
-    if (boundId(c, bound_).has_value()) { return; }
+    if (boundTerm(c, bound_).has_value()) { return; }
     for (const auto& [_, already] : projected_) {
       if (already == name) { return; }
     }
@@ -85,9 +83,17 @@ bool ScanIterator::hasNext() {
 
 Solution ScanIterator::next() {
   Solution solution;
+  // The variables fixed above this scan are part of the solution, not just of
+  // the scan. Leaving them out lost `?human` from every solution of a resumed
+  // inner branch, where a `VALUES` had bound it and no join sat above to put
+  // it back — the count said three solutions and two carried `?human`.
+  for (const Binding& b : bound_) {
+    solution.bindings.push_back(b);
+  }
   for (const auto& [which, name] : projected_) {
     solution.bindings.push_back(
-        Binding{name, cursor_->getString(which), cursor_->getId(which)});
+        Binding{name, cursor_->getString(which),
+                TripleComponent{cursor_->getId(which)}});
   }
   cursor_->next();
   // NOT `++context_.produced`. A scan's match is a solution only when the scan

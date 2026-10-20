@@ -41,7 +41,7 @@ get_directory_property(QLEVER_INCLUDE_DIRS
 get_directory_property(QLEVER_LINK_DIRS
         DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/qlever LINK_DIRECTORIES)
 
-add_executable(passage src/main.cpp src/Continuation.cpp src/ScanIterator.cpp src/JoinIterator.cpp src/Algebra.cpp)
+add_executable(passage src/main.cpp src/Continuation.cpp src/ScanIterator.cpp src/JoinIterator.cpp src/UnionIterator.cpp src/Planner.cpp src/Algebra.cpp)
 target_include_directories(passage PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/qlever/src)
@@ -53,7 +53,7 @@ target_link_directories(passage PRIVATE ${QLEVER_LINK_DIRS})
 # so they need its `testUtil` target — which the comment in
 # `qlever/test/CMakeLists.txt` describes as basically all of QLever.
 enable_testing()
-add_executable(ContinuationTest test/ContinuationTest.cpp src/Continuation.cpp src/ScanIterator.cpp src/JoinIterator.cpp src/Algebra.cpp)
+add_executable(ContinuationTest test/ContinuationTest.cpp src/Continuation.cpp src/ScanIterator.cpp src/JoinIterator.cpp src/UnionIterator.cpp src/Planner.cpp src/Algebra.cpp)
 target_include_directories(ContinuationTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/qlever/src

@@ -27,17 +27,23 @@
 
 #include "Algebra.h"
 #include "global/Id.h"
+#include "parser/TripleComponent.h"
 
 namespace passage {
 
-// One binding of one variable. The `Id` is carried beside the text because a
-// nested loop binds its inner scan with it: resolving the text back through
-// the vocabulary for every inner scan would be a lookup per outer solution,
-// which is the shape of cost this project has measured before.
+// One binding of one variable: the term it took, and that term as text.
+//
+// The term is a `TripleComponent` rather than an `Id` so that the two things
+// that bind a scan go through one path. A nested loop binds with an `Id` read
+// off a cursor, and `TripleComponent` can hold an `Id` — so no text is
+// parsed and the vocabulary is not consulted once per outer solution, which is
+// the shape of cost this project has measured before. A `VALUES` clause read
+// back out of a continuation binds with the term the parser produced, which is
+// a `TripleComponent` already.
 struct Binding {
   std::string variable;
   std::string text;
-  Id id;
+  TripleComponent term;
 };
 
 // One solution: variables in the order the pattern writes them.

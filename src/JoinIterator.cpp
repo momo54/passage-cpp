@@ -34,10 +34,18 @@ bool JoinIterator::hasNext() {
 }
 
 Solution JoinIterator::next() {
-  Solution solution = leftSolution_;
-  Solution inner = right_->next();
-  solution.bindings.insert(solution.bindings.end(), inner.bindings.begin(),
-                           inner.bindings.end());
+  Solution solution = right_->next();
+  // The inner scan already carries the outer bindings it was given, since
+  // those are variables it shares with the outer pattern. What is left to add
+  // are the outer variables the inner pattern does not mention, which would
+  // otherwise be dropped from the solution.
+  for (const Binding& outer : leftSolution_.bindings) {
+    bool already = false;
+    for (const Binding& mine : solution.bindings) {
+      if (mine.variable == outer.variable) { already = true; break; }
+    }
+    if (!already) { solution.bindings.push_back(outer); }
+  }
   return solution;
 }
 
