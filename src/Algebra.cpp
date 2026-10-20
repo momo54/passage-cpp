@@ -79,6 +79,26 @@ Cont bindings(std::vector<std::pair<std::string, std::string>> binds,
 Cont join(Cont left, Cont right) {
   if (isDone(left)) { return right; }
   if (isDone(right)) { return left; }
+  // A join over a union is DISTRIBUTED, not kept: `(a ∪ b) ⋈ p` becomes
+  // `(a ⋈ p) ∪ (b ⋈ p)`. Join distributes over union, so this says the same
+  // thing, and it is the choice this kernel has already made everywhere else
+  // — Passage's algebra factors a common suffix out of a union, and here the
+  // suffix goes into each branch instead, so the reader needs no operator for
+  // a union joined with a pattern.
+  //
+  // Not cosmetic: a join of three patterns pauses with its outer side already
+  // a union, so without this the kernel printed a continuation its own planner
+  // refused, and a sequence over three patterns could not terminate. Found by
+  // Passage's own `BGPTest` cases, where Alice's three animals make the inner
+  // scan deep enough to reach it.
+  if (left->kind == Node::Kind::Union) {
+    return unite(join(left->children.front(), right),
+                 join(left->children.back(), right));
+  }
+  if (right->kind == Node::Kind::Union) {
+    return unite(join(left, right->children.front()),
+                 join(left, right->children.back()));
+  }
   return make(Node{Node::Kind::Join, {}, 0, {},
                    {std::move(left), std::move(right)}});
 }

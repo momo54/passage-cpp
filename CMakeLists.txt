@@ -74,3 +74,16 @@ target_link_directories(AlgebraTest PRIVATE ${QLEVER_LINK_DIRS})
 qlever_target_link_libraries(AlgebraTest gtest gmock_main testUtil
         qlever sparqlParser engine qlever_util index)
 add_test(NAME AlgebraTest COMMAND AlgebraTest)
+
+add_executable(PassageCasesTest test/PassageCasesTest.cpp src/Continuation.cpp
+        src/ScanIterator.cpp src/JoinIterator.cpp src/UnionIterator.cpp
+        src/Planner.cpp src/Algebra.cpp)
+target_include_directories(PassageCasesTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/qlever/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/qlever/test)
+target_include_directories(PassageCasesTest SYSTEM PRIVATE ${QLEVER_INCLUDE_DIRS})
+target_link_directories(PassageCasesTest PRIVATE ${QLEVER_LINK_DIRS})
+qlever_target_link_libraries(PassageCasesTest gtest gmock_main testUtil
+        qlever sparqlParser engine qlever_util index)
+add_test(NAME PassageCasesTest COMMAND PassageCasesTest)

@@ -209,12 +209,28 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Twenty tests. `ContinuationTest` builds its own index from Turtle under
-`$TMPDIR`, so none of its thirteen can be skipped for want of data;
+Twenty-eight tests, in three suites, each building its own index from Turtle
+under `$TMPDIR` so that none can be skipped for want of data.
 `AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
 the exact SPARQL of Example 3.10.
 
-Two of them exist because a test that cannot fail says nothing. The sequence
+`PassageCasesTest` is Passage's own `BGPTest` cases, transcribed with its
+`triples9` data: three addresses, Alice owning three animals, three species.
+They are worth more than the tests written here because their expected answers
+were not computed here — Passage checks them against Blazegraph evaluating
+the same query. Two of them are continuations someone wrote by hand in that
+suite, which is exactly what this kernel has to read back.
+
+They found a real defect on the first run. A join of three patterns pauses
+with its outer side *already a union*, so `pause()` produced a union joined
+with a pattern — a shape the planner refuses, which means the kernel printed
+a continuation it could not read and a sequence over three patterns could not
+terminate. `join` now distributes over union, which is the choice made
+everywhere else here: Passage factors a common suffix out of a union, this
+pushes it into each branch. The three-pattern test written here had missed it,
+because its data never made the outer union form.
+
+Two more tests exist because a test that cannot fail says nothing. The sequence
 is compared by its SOLUTIONS rather than by their number, since a resumed
 inner branch that had lost `?human` from every solution still counted three.
 And `aPauseInsideTheLeftBranchKeepsTheRightOne` uses data where an inner scan

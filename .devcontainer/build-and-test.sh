@@ -58,7 +58,7 @@ by_memory=$(( mem_gb / 3 ))
 [ "$by_memory" -ge 1 ] || by_memory=1
 JOBS=${JOBS:-$(( cores < by_memory ? cores : by_memory ))}
 echo "== $cores cores, ${mem_gb}GB, so -j $JOBS (three gigabytes a job)"
-cmake --build build --target passage qlever-index ContinuationTest AlgebraTest -j "$JOBS"
+cmake --build build --target passage qlever-index ContinuationTest AlgebraTest PassageCasesTest -j "$JOBS"
 
 step "load six triples"
 WORK=${WORK:-$HOME/passage-demo}
@@ -83,5 +83,6 @@ step "a continuation sequence"
 step "the tests"
 ./build/ContinuationTest
 ./build/AlgebraTest
+./build/PassageCasesTest
 
 step "done"

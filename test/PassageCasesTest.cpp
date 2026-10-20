@@ -1,0 +1,187 @@
+// Passage's own test cases, run against this kernel.
+//
+// The data and the expected answers are transcribed from
+// `passage-volcano/src/test/java/fr/gdd/passage/volcano/executions/BGPTest.java`
+// and `passage-commons/.../InMemoryStatements.java#triples9`. They matter
+// because they were not computed here: Passage checks them against Blazegraph
+// evaluating the same query, so they are an outside opinion on what these
+// queries mean.
+//
+// Every case is also run through the continuation sequence at several quotas,
+// which is the part Passage's own tests do by parameterising over execution
+// contexts. A case that answers correctly in one evaluation and wrongly in
+// three is the failure this kernel is most likely to have.
+#include <gmock/gmock.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "../src/Continuation.h"
+#include "util/GTestHelpers.h"
+#include "util/IndexTestHelpers.h"
+
+using namespace passage;
+using ::testing::UnorderedElementsAreArray;
+
+namespace {
+
+// `InMemoryStatements.triples9`, verbatim: three addresses, Alice owning three
+// animals, three species.
+std::string triples9() {
+  return "<http://Alice> <http://address> <http://nantes> . "
+         "<http://Bob>   <http://address> <http://paris>  . "
+         "<http://Carol> <http://address> <http://nantes> . "
+         "<http://Alice> <http://own>     <http://cat> . "
+         "<http://Alice> <http://own>     <http://dog> . "
+         "<http://Alice> <http://own>     <http://snake> . "
+         "<http://cat>   <http://species> <http://feline> . "
+         "<http://dog>   <http://species> <http://canine> . "
+         "<http://snake> <http://species> <http://reptile> .";
+}
+
+Index indexFrom(std::string turtle) {
+  auto dir = std::filesystem::temp_directory_path() / "passage-cpp-tests";
+  std::filesystem::create_directories(dir);
+  auto basename = dir / gtestCurrentTestName();
+  return ad_utility::testing::makeTestIndex(basename.string(),
+                                            std::move(turtle));
+}
+
+// Every solution of `query`, by following the continuations, as sorted
+// `?var=<term>` rows so that two runs can be compared whatever the order
+// within a solution.
+std::vector<std::string> follow(const Index& index, std::string query,
+                                size_t quota) {
+  std::vector<std::string> rows;
+  size_t evaluations = 0;
+  while (true) {
+    Outcome outcome = evaluate(index, query, Quota{quota});
+    ++evaluations;
+    for (const auto& solution : outcome.solutions) {
+      std::vector<std::string> parts;
+      for (const auto& b : solution.bindings) {
+        parts.push_back(b.variable + "=" + b.text);
+      }
+      std::sort(parts.begin(), parts.end());
+      std::string row;
+      for (const auto& part : parts) { row += part + " "; }
+      rows.push_back(row);
+    }
+    if (!outcome.continuation.has_value()) { break; }
+    query = *outcome.continuation;
+    if (evaluations >= 1000) {
+      ADD_FAILURE() << "the sequence is not terminating";
+      break;
+    }
+  }
+  return rows;
+}
+
+// One case, run whole and then at every quota that can split it.
+void check(const Index& index, const std::string& query,
+           const std::vector<std::string>& expected) {
+  std::vector<std::string> whole = follow(index, query, 1000);
+  EXPECT_THAT(whole, UnorderedElementsAreArray(expected)) << query;
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{3}, size_t{5}}) {
+    EXPECT_THAT(follow(index, query, quota),
+                UnorderedElementsAreArray(expected))
+        << "quota " << quota << ", " << query;
+  }
+}
+
+}  // namespace
+
+// `BGPTest.simple_triple_pattern`: three people have an address.
+TEST(PassageCases, onePattern) {
+  Index index = indexFrom(triples9());
+  check(index, "SELECT * WHERE { ?p <http://address> ?c }",
+        {"?c=<http://nantes> ?p=<http://Alice> ",
+         "?c=<http://paris> ?p=<http://Bob> ",
+         "?c=<http://nantes> ?p=<http://Carol> "});
+}
+
+// `BGPTest.unknown_predicate`: a predicate absent from the vocabulary matches
+// nothing. The trap is answering *everything* instead, which the Java backend
+// once did.
+TEST(PassageCases, anUnknownPredicateMatchesNothing) {
+  Index index = indexFrom(triples9());
+  check(index, "SELECT * WHERE { ?p <http://does_not_exist> ?c }", {});
+}
+
+// `BGPTest.unknown_predicate_in_a_bgp`: and nothing again when it is one
+// pattern of a join. Note `?c` occurs in both patterns, so the inner scan is
+// bound on two components at once.
+TEST(PassageCases, aJoinWithAnUnknownPredicateMatchesNothing) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { ?p <http://address> ?c . ?p <http://does_not_exist> ?c }",
+        {});
+}
+
+// `BGPTest`, the two- and three-pattern joins: Alice owns three animals, each
+// of a species.
+TEST(PassageCases, aTwoPatternJoin) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { ?p <http://address> <http://nantes> . "
+        "?p <http://own> ?a }",
+        {"?a=<http://cat> ?p=<http://Alice> ",
+         "?a=<http://dog> ?p=<http://Alice> ",
+         "?a=<http://snake> ?p=<http://Alice> "});
+}
+
+TEST(PassageCases, aThreePatternJoin) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { ?p <http://address> <http://nantes> . "
+        "?p <http://own> ?a . ?a <http://species> ?s }",
+        {"?a=<http://cat> ?p=<http://Alice> ?s=<http://feline> ",
+         "?a=<http://dog> ?p=<http://Alice> ?s=<http://canine> ",
+         "?a=<http://snake> ?p=<http://Alice> ?s=<http://reptile> "});
+}
+
+// `BGPTest.offset_triple_pattern_return_no_match`, a continuation written by
+// hand in Passage's suite: the second person from Nantes is Carol, and she
+// owns nothing, so the join is empty. This is a continuation shape, read back.
+TEST(PassageCases, aHandWrittenContinuationThatMatchesNothing) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { { { SELECT * WHERE { ?p <http://address> <http://nantes> } "
+        "OFFSET 1 } ?p <http://own> ?a } ?a <http://species> ?s }",
+        {});
+}
+
+// `BGPTest.issue_with_the_first_offset`, the other hand-written continuation.
+//
+// Passage writes it with the trailing `?a <species> ?s` *outside* the union,
+// which its algebra can factor; this kernel distributes that suffix into both
+// branches instead, since its `pause()` never writes a union joined with a
+// pattern and its planner therefore refuses one. The query below is that
+// distribution, and the expected answer is Passage's: cat is already produced,
+// so only dog and snake remain.
+TEST(PassageCases, aHandWrittenContinuationWithAUnion) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { "
+        "{ { SELECT * WHERE { VALUES ?p { <http://Alice> } "
+        "?p <http://own> ?a } OFFSET 1 } ?a <http://species> ?s } "
+        "UNION "
+        "{ { SELECT * WHERE { ?p <http://address> <http://nantes> } OFFSET 1 } "
+        "?p <http://own> ?a . ?a <http://species> ?s } }",
+        {"?a=<http://dog> ?p=<http://Alice> ?s=<http://canine> ",
+         "?a=<http://snake> ?p=<http://Alice> ?s=<http://reptile> "});
+}
+
+// `?s ?p ?o` over the whole graph, which is nine triples.
+TEST(PassageCases, everythingIsNineTriples) {
+  Index index = indexFrom(triples9());
+  std::vector<std::string> whole = follow(index, "SELECT * WHERE { ?s ?p ?o }", 1000);
+  EXPECT_EQ(whole.size(), 9u);
+  for (size_t quota : {size_t{1}, size_t{2}, size_t{4}, size_t{9}}) {
+    EXPECT_THAT(follow(index, "SELECT * WHERE { ?s ?p ?o }", quota),
+                UnorderedElementsAreArray(whole))
+        << "quota " << quota;
+  }
+}
