@@ -209,17 +209,33 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Thirty-one tests, in three suites, each building its own index from Turtle
+Thirty-three tests, in three suites, each building its own index from Turtle
 under `$TMPDIR` so that none can be skipped for want of data.
 `AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
 the exact SPARQL of Example 3.10.
 
-`PassageCasesTest` is Passage's own `BGPTest` cases, transcribed with its
-`triples9` data: three addresses, Alice owning three animals, three species.
-They are worth more than the tests written here because their expected answers
-were not computed here — Passage checks them against Blazegraph evaluating
-the same query. Two of them are continuations someone wrote by hand in that
-suite, which is exactly what this kernel has to read back.
+`PassageCasesTest` runs Passage's own `BGPTest` cases against this kernel,
+with its `triples9` data: three addresses, Alice owning three animals, three
+species. They are worth more than the tests written here because their
+expected answers were not computed here — Passage checks them against
+Blazegraph evaluating the same query.
+
+**It is not the same suite, and the count is worth being exact about.**
+`BGPTest.java` has twelve test methods; the 181 tests its CI reports are those
+twelve parameterised over execution contexts. Four are `@Disabled`, wanting
+WDBench or WatDiv. Of the eight that remain:
+
+| | |
+| --- | --- |
+| `a_tp_with_an_unknown_value`, `a_bgp_with_an_unknown_value` | run here |
+| `offset_triple_pattern_return_no_match`, `issue_with_the_first_offset` | run here, the second one verbatim — it is a continuation written by hand in that suite |
+| `a_literal_at_predicate_position` | run here: a single-row `VALUES` is inside the fragment |
+| `weird_string_in_query` | cannot run as written anywhere — it names a Blazegraph of DBpedia at an absolute path on one author's laptop. Its substance, a literal carrying its own quotes, is tested against data of our own |
+| `an_unknown_value_at_first_but_then_known` and its mirror | outside the fragment: a `VALUES` of several rows needs a table operator. A test records the refusal rather than leaving it unmentioned |
+
+Passage's other suites are not touched at all: `FilterTest` has 114 tests,
+`UnionTest` 51, and neither `FILTER` nor a `UNION` written by hand is in this
+fragment.
 
 They found a real defect on the first run. A join of three patterns pauses
 with its outer side *already a union*, so `pause()` produced a union joined

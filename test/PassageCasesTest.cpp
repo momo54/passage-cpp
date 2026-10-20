@@ -229,6 +229,59 @@ TEST(PassageCases, aComputedBindIsRefused) {
   }
 }
 
+// `BGPTest.a_literal_at_predicate_position`: a literal bound to the predicate
+// matches nothing, since no triple has a literal predicate. Passage expects
+// zero and so does this.
+TEST(PassageCases, aLiteralAtPredicatePositionMatchesNothing) {
+  Index index = indexFrom(triples9());
+  check(index, "SELECT * WHERE { VALUES ?predicate { \"12\" } ?p ?predicate ?c }",
+        {});
+}
+
+// The substance of `BGPTest.weird_string_in_query`, which cannot be run as
+// written: it names a Blazegraph of DBpedia at an absolute path on one
+// author's laptop. What it is about is a literal carrying quotes of its own,
+// in object position, so that is tested here against data of our own.
+TEST(PassageCases, aLiteralWithQuotesInIt) {
+  Index index = indexFrom(
+      "<http://ship> <http://motto> "
+      "\"\\\"By Sea, Land, and Air We Prosper\\\"\" . "
+      "<http://other> <http://motto> \"plain\" .");
+  std::vector<std::string> rows =
+      follow(index, "SELECT * WHERE { ?s ?p ?o }", 1000);
+  ASSERT_EQ(rows.size(), 2u);
+  // And the literal is matched when it is the constant of the pattern, which
+  // is what the original asserts: a non-empty result.
+  std::vector<std::string> matched = follow(
+      index,
+      "SELECT * WHERE { ?s ?p "
+      "\"\\\"By Sea, Land, and Air We Prosper\\\"\" }",
+      1000);
+  EXPECT_EQ(matched.size(), 1u) << "the quoted literal should match its triple";
+}
+
+// The two cases of `BGPTest` that this fragment does not cover, recorded here
+// rather than left unmentioned: a `VALUES` of SEVERAL rows, which Passage
+// handles as a general operator and which would need a table operator to run.
+// Refused by what it is, not answered wrongly.
+//
+// `an_unknown_value_at_first_but_then_known` and its mirror expect three
+// solutions each, from the `<http://address>` row of the table; here the
+// expectation is a readable refusal.
+TEST(PassageCases, aMultiRowValuesIsOutsideTheFragment) {
+  Index index = indexFrom(triples9());
+  try {
+    evaluate(index,
+             "SELECT * WHERE { VALUES ?predicate "
+             "{ <http://does_not_exist> <http://address> } ?p ?predicate ?c }",
+             Quota{10});
+    ADD_FAILURE() << "a VALUES of two rows should be refused";
+  } catch (const std::exception& e) {
+    EXPECT_THAT(std::string{e.what()},
+                ::testing::HasSubstr("VALUES clause of 1 variables and 2 rows"));
+  }
+}
+
 // `?s ?p ?o` over the whole graph, which is nine triples.
 TEST(PassageCases, everythingIsNineTriples) {
   Index index = indexFrom(triples9());
