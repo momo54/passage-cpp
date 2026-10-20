@@ -296,10 +296,18 @@ quotas of 1, 2, 3 and 5.
 * **Not an engine.** No `FILTER`, no `OPTIONAL`, no `UNION` in the query, no
   aggregation. Anything outside the fragment is refused by name.
 
-* **Not faster than Passage, as far as anyone has measured.** Nothing here has
-  been benchmarked against the Java engine. The numbers quoted above were
-  measured on the Java side, and they are the reason to try, not a result of
-  trying.
+* **Not faster than Passage. Measured, not assumed.** On the same index, the
+  same query, the same left-deep plan and the same patched QLever, this kernel
+  runs the two-pattern join at 1.35 M solutions/s and the Java engine's warm
+  plateau is 1.34—1.51 M. The same speed. A profile says why: 67% of the run is
+  9,937 cold inner-cursor starts at ~10.7 us each, almost all of it the main
+  thread asleep on a condition variable waiting for QLever's decompression pool
+  to hand back the first block — and a bare C++ loop over `ScanCursor` pays the
+  identical 10.4 us for the same starts. The Volcano protocol here costs ~130 ns
+  per solution, mostly the `Solution` vector's allocation. Rewriting the engine
+  in C++ does not touch the dominant cost, because that cost is a per-scan
+  thread hand-off inside QLever. `journal.md` in the Passage repository has the
+  full table and how to reproduce it.
 * **Not a replacement.** Passage's `Backend` interface exists so that the
   engine can outlive one store — Blazegraph is unmaintained, which is the whole
   motivation. A kernel written against QLever's internals gives that up.
