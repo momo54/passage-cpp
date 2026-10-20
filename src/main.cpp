@@ -2,6 +2,7 @@
 // watched rather than described.
 //
 //   passage --index <basename> --query '<SPARQL>' [--quota N] [--loop]
+//                                                  [--block-cache N]
 //
 // Without `--loop` it evaluates once and prints the continuation, which is
 // what a client would receive. With `--loop` it feeds each continuation back
@@ -18,7 +19,7 @@ namespace {
 
 void usage() {
   std::cerr << "usage: passage --index <basename> --query '<SPARQL>'"
-               " [--quota N] [--loop]\n";
+               " [--quota N] [--loop] [--block-cache N]\n";
 }
 
 }  // namespace
@@ -27,6 +28,7 @@ int main(int argc, char** argv) {
   std::string basename;
   std::string query;
   size_t quota = 1000;
+  size_t blockCache = 16;
   bool loop = false;
   bool count = false;
 
@@ -39,6 +41,7 @@ int main(int argc, char** argv) {
     if (arg == "--index") { basename = next(); }
     else if (arg == "--query") { query = next(); }
     else if (arg == "--quota") { quota = std::stoul(next()); }
+    else if (arg == "--block-cache") { blockCache = std::stoul(next()); }
     else if (arg == "--loop") { loop = true; }
     else if (arg == "--count") { count = true; }
     else { usage(); return 2; }
@@ -61,7 +64,8 @@ int main(int argc, char** argv) {
     std::string current = query;
     while (true) {
       passage::Outcome outcome =
-          passage::evaluate(index, current, passage::Quota{quota});
+          passage::evaluate(index, current,
+                            passage::Quota{quota, blockCache});
       ++evaluations;
       total += outcome.solutions.size();
 
