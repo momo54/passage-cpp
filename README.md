@@ -209,7 +209,7 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Twenty-eight tests, in three suites, each building its own index from Turtle
+Thirty tests, in three suites, each building its own index from Turtle
 under `$TMPDIR` so that none can be skipped for want of data.
 `AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
 the exact SPARQL of Example 3.10.
@@ -253,6 +253,14 @@ quotas of 1, 2, 3 and 5.
   group, `VALUES`, a subquery with an `OFFSET`, a basic graph pattern, a
   `UNION` of two groups, and a plain nested group. Anything else is refused by
   what it is.
+* **The saved bindings are `BIND`, as in the paper.** An earlier version wrote
+  `VALUES ?v { <t> }` because reading a `Values` back is reading plain terms
+  while a `Bind` carries an expression. That was convenience for the author of
+  the reader, which is the wrong criterion twice: Example 3.10 of the paper
+  shows `BIND`, and refusing `BIND` meant a continuation written by *Passage*
+  could not be read here — an incompatibility in the one direction that
+  matters. Extracting the constant is a `dynamic_cast` to `IriExpression`, the
+  idiom QLever uses itself. Both forms are read; only `BIND` is written.
 * **Not an engine.** No `FILTER`, no `OPTIONAL`, no `UNION` in the query, no
   aggregation. Anything outside the fragment is refused by name.
 

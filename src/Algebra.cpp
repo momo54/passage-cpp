@@ -27,10 +27,10 @@ void writeBody(const Cont& c, std::ostringstream& out) {
       return;
     }
     case Node::Kind::Bindings:
-      // `VALUES` rather than `BIND`, so that reading this back is reading data
-      // instead of an expression; see the header.
+      // `BIND`, as Passage writes it and as the paper shows it. `VALUES` is
+      // still accepted when reading; see the header.
       for (const auto& [variable, term] : c->bindings) {
-        out << "VALUES " << variable << " { " << term << " } ";
+        out << "BIND(" << term << " AS " << variable << ") ";
       }
       writeBody(c->children.front(), out);
       return;

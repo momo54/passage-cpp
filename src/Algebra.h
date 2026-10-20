@@ -18,13 +18,17 @@
 //   Join           `OpJoin`           — a conjunction, written as a group
 //   Union          `OpUnion`          — two paused branches side by side
 //
-// ONE DELIBERATE DEVIATION. Passage writes the bindings that led to an
-// iterator as `BIND(<term> AS ?v)`, because that is what Jena's
-// `input.asBindAs()` produces. `Bindings` prints `VALUES ?v { <term> }`
-// instead, which means the same thing for one row and is far easier to read
-// back: QLever's parser hands a `Values` as plain `TripleComponent`s, while a
-// `Bind` carries a `SparqlExpressionPimpl` whose constant would have to be
-// dug out of an expression tree. A kernel has to read what it writes.
+// `Bindings` prints `BIND(<term> AS ?v)`, which is what Passage writes and
+// what Example 3.10 of the paper shows. An earlier version printed
+// `VALUES ?v { <term> }` because reading a `Values` back is reading plain
+// terms while a `Bind` carries a `SparqlExpressionPimpl`. That was a choice
+// made for the convenience of the reader, which is the wrong criterion twice
+// over: the published form is `BIND`, and refusing `BIND` meant a continuation
+// written by *Passage* could not be read here — an incompatibility in the
+// one direction that matters. Extracting the constant turned out to be a
+// `dynamic_cast` to `IriExpression`, which is what QLever's own
+// `getIdOrLocalVocabEntryFromLiteralExpression` does. Both forms are accepted
+// on the way in.
 #ifndef PASSAGE_ALGEBRA_H
 #define PASSAGE_ALGEBRA_H
 

@@ -57,16 +57,15 @@ TEST(Algebra, aSliceBelowTheRootBecomesASubquery) {
 }
 
 // The bindings that led to an iterator, which a nested loop has to carry so
-// that the resumed query produces the same solutions. Passage writes them with
-// `input.asBindAs()`, hence `BIND`; this writes `VALUES`, which says the same
-// for one row and is readable without walking an expression tree.
-TEST(Algebra, bindingsAreWrittenAsValues) {
+// that the resumed query produces the same solutions. `BIND`, as Passage
+// writes them and as Example 3.10 of the paper shows them.
+TEST(Algebra, bindingsAreWrittenAsBind) {
   Cont c = bindings({{"?s", "<http://ex.org/H1>"}},
                     pattern(tp("?s", "<occupation>", "?o")));
   EXPECT_EQ(asSparql(c),
-            "SELECT * WHERE { VALUES ?s { <http://ex.org/H1> }"
+            "SELECT * WHERE { BIND(<http://ex.org/H1> AS ?s)"
             " ?s <occupation> ?o . }");
-  // No bindings is not an empty `VALUES`, it is the child itself.
+  // No bindings is not an empty `BIND`, it is the child itself.
   Cont bare = pattern(tp("?s", "<p>", "?o"));
   EXPECT_EQ(asSparql(bindings({}, bare)), asSparql(bare));
 }
@@ -93,7 +92,7 @@ TEST(Algebra, aPausedNestedLoopIsPassagesExampleShape) {
       join(slice(pattern(outer), 2), pattern(inner)));
   EXPECT_EQ(asSparql(paused),
             "SELECT * WHERE { "
-            "{ { SELECT * WHERE { VALUES ?human { <H3> } "
+            "{ { SELECT * WHERE { BIND(<H3> AS ?human) "
             "?human <occupation> ?occupation . } OFFSET 0 } }"
             " UNION "
             "{ { SELECT * WHERE { ?human <type> <Human> . } OFFSET 2 }"

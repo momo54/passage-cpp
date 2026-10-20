@@ -300,7 +300,7 @@ TEST(Continuation, aPausedNestedLoopIsExampleThreeTen) {
   ASSERT_TRUE(outcome.continuation.has_value());
   EXPECT_EQ(*outcome.continuation,
             "SELECT * WHERE { { { SELECT * WHERE { "
-            "VALUES ?human { <http://ex.org/H1> } "
+            "BIND(<http://ex.org/H1> AS ?human) "
             "?human <http://ex.org/occupation> ?occupation . } OFFSET 1 } }"
             " UNION { { SELECT * WHERE { "
             "?human <http://ex.org/type> <http://ex.org/Human> . } OFFSET 1 }"

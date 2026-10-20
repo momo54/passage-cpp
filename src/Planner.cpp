@@ -8,6 +8,7 @@
 #include "JoinIterator.h"
 #include "ScanIterator.h"
 #include "UnionIterator.h"
+#include "engine/sparqlExpressions/LiteralExpression.h"
 #include "parser/GraphPattern.h"
 #include "parser/GraphPatternOperation.h"
 #include "parser/SparqlTriple.h"
@@ -71,6 +72,31 @@ Group readGroup(const parsedQuery::GraphPattern& pattern) {
       const TripleComponent& term = inline_._values.front().front();
       group.values.push_back(Binding{inline_._variables.front().name(),
                                      term.toString(), term});
+    } else if (const auto* bind = std::get_if<parsedQuery::Bind>(&operation)) {
+      // `BIND(<term> AS ?v)`, which is what this kernel writes and what
+      // Passage writes. Only a constant is accepted: a `BIND` of a computed
+      // expression is a `BIND` someone wrote by hand, and evaluating it would
+      // need the expression machinery this kernel does without.
+      //
+      // The `dynamic_cast` is the idiom QLever itself uses, in
+      // `getIdOrLocalVocabEntryFromLiteralExpression`.
+      const sparqlExpression::SparqlExpression* expression =
+          bind->_expression.getPimpl();
+      if (const auto* iri =
+              dynamic_cast<const sparqlExpression::IriExpression*>(expression)) {
+        TripleComponent term{iri->value()};
+        group.values.push_back(
+            Binding{bind->_target.name(), term.toString(), term});
+      } else if (const auto* literal =
+                     dynamic_cast<const sparqlExpression::StringLiteralExpression*>(
+                         expression)) {
+        TripleComponent term{literal->value()};
+        group.values.push_back(
+            Binding{bind->_target.name(), term.toString(), term});
+      } else {
+        refuse("a BIND of something other than a constant (" +
+               bind->getDescriptor() + ")");
+      }
     } else if (const auto* sub =
                    std::get_if<parsedQuery::Subquery>(&operation)) {
       if (group.subquery != nullptr) { refuse("two subqueries in one group"); }

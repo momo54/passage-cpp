@@ -159,19 +159,53 @@ TEST(PassageCases, aHandWrittenContinuationThatMatchesNothing) {
 // which its algebra can factor; this kernel distributes that suffix into both
 // branches instead, since its `pause()` never writes a union joined with a
 // pattern and its planner therefore refuses one. The query below is that
-// distribution, and the expected answer is Passage's: cat is already produced,
-// so only dog and snake remain.
+// distribution; everything else, the `BIND` included, is Passage's own text,
+// and so is the expected answer: cat is already produced, so only dog and
+// snake remain.
 TEST(PassageCases, aHandWrittenContinuationWithAUnion) {
   Index index = indexFrom(triples9());
   check(index,
         "SELECT * WHERE { "
-        "{ { SELECT * WHERE { VALUES ?p { <http://Alice> } "
+        "{ { SELECT * WHERE { BIND(<http://Alice> AS ?p) "
         "?p <http://own> ?a } OFFSET 1 } ?a <http://species> ?s } "
         "UNION "
         "{ { SELECT * WHERE { ?p <http://address> <http://nantes> } OFFSET 1 } "
         "?p <http://own> ?a . ?a <http://species> ?s } }",
         {"?a=<http://dog> ?p=<http://Alice> ?s=<http://canine> ",
          "?a=<http://snake> ?p=<http://Alice> ?s=<http://reptile> "});
+}
+
+// Both forms of a saved binding are read, so that a continuation written by
+// Passage is readable here and the other way round. `BIND` is what the paper
+// shows and what this kernel writes; `VALUES` says the same for one row and
+// costs nothing to keep accepting.
+TEST(PassageCases, aSavedBindingIsReadAsBindOrAsValues) {
+  Index index = indexFrom(triples9());
+  const std::vector<std::string> expected{
+      "?a=<http://cat> ?p=<http://Alice> ",
+      "?a=<http://dog> ?p=<http://Alice> ",
+      "?a=<http://snake> ?p=<http://Alice> "};
+  check(index,
+        "SELECT * WHERE { BIND(<http://Alice> AS ?p) ?p <http://own> ?a }",
+        expected);
+  check(index,
+        "SELECT * WHERE { VALUES ?p { <http://Alice> } ?p <http://own> ?a }",
+        expected);
+}
+
+// A `BIND` of anything but a constant is outside the fragment, and refused by
+// what it is rather than evaluated wrongly.
+TEST(PassageCases, aComputedBindIsRefused) {
+  Index index = indexFrom(triples9());
+  try {
+    evaluate(index,
+             "SELECT * WHERE { ?p <http://own> ?a BIND(STR(?a) AS ?t) }",
+             Quota{10});
+    ADD_FAILURE() << "a computed BIND should be refused";
+  } catch (const std::exception& e) {
+    EXPECT_THAT(std::string{e.what()},
+                ::testing::HasSubstr("BIND of something other than a constant"));
+  }
 }
 
 // `?s ?p ?o` over the whole graph, which is nine triples.
