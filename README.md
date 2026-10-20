@@ -209,7 +209,7 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Thirty-three tests, in three suites, each building its own index from Turtle
+Thirty-six tests, in three suites, each building its own index from Turtle
 under `$TMPDIR` so that none can be skipped for want of data.
 `AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
 the exact SPARQL of Example 3.10.
@@ -233,9 +233,16 @@ WDBench or WatDiv. Of the eight that remain:
 | `weird_string_in_query` | cannot run as written anywhere — it names a Blazegraph of DBpedia at an absolute path on one author's laptop. Its substance, a literal carrying its own quotes, is tested against data of our own |
 | `an_unknown_value_at_first_but_then_known` and its mirror | outside the fragment: a `VALUES` of several rows needs a table operator. A test records the refusal rather than leaving it unmentioned |
 
-Passage's other suites are not touched at all: `FilterTest` has 114 tests,
-`UnionTest` 51, and neither `FILTER` nor a `UNION` written by hand is in this
-fragment.
+`UnionTest`'s three live cases run here too, which was not planned: a `UNION`
+written by hand was outside the fragment until the planner learned to read
+one, and it had to learn because a paused join *is* a union. They pass at
+every quota, including the case whose two branches bind different variables
+— the left `?p ?a ?s`, the right only `?p` — and the case whose right
+branch is a join.
+
+What is still untouched is `FilterTest`, 114 tests: `FILTER` is not in this
+fragment, and adding it means expression evaluation, which is the one part of
+QLever this kernel has so far managed to use without entering.
 
 They found a real defect on the first run. A join of three patterns pauses
 with its outer side *already a union*, so `pause()` produced a union joined

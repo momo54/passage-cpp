@@ -260,6 +260,59 @@ TEST(PassageCases, aLiteralWithQuotesInIt) {
   EXPECT_EQ(matched.size(), 1u) << "the quoted literal should match its triple";
 }
 
+// Passage's `UnionTest`, the three live cases. A `UNION` written by hand was
+// outside this fragment until the planner learned to read one, which it had to
+// do because a paused join *is* a union. So these come for free — but "for
+// free" is a claim, and these are what check it.
+
+// `UnionTest.execute_a_simple_union`: three triples from each branch.
+TEST(PassageCases, aSimpleUnion) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { { ?p <http://own> ?a } UNION "
+        "{ ?p <http://address> ?a } }",
+        {"?a=<http://cat> ?p=<http://Alice> ",
+         "?a=<http://dog> ?p=<http://Alice> ",
+         "?a=<http://snake> ?p=<http://Alice> ",
+         "?a=<http://nantes> ?p=<http://Alice> ",
+         "?a=<http://paris> ?p=<http://Bob> ",
+         "?a=<http://nantes> ?p=<http://Carol> "});
+}
+
+// `UnionTest.union_with_a_bgp`: the right branch is a join, so this is a
+// union over a scan and a nested loop. Six solutions, Alice six times —
+// three from the left, and three more from the right, where only Alice both
+// has an address and owns something.
+TEST(PassageCases, aUnionWhoseBranchIsAJoin) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { { ?p <http://own> ?a } UNION "
+        "{ ?p <http://address> ?address . ?p <http://own> ?a } }",
+        {"?a=<http://cat> ?p=<http://Alice> ",
+         "?a=<http://dog> ?p=<http://Alice> ",
+         "?a=<http://snake> ?p=<http://Alice> ",
+         "?a=<http://cat> ?address=<http://nantes> ?p=<http://Alice> ",
+         "?a=<http://dog> ?address=<http://nantes> ?p=<http://Alice> ",
+         "?a=<http://snake> ?address=<http://nantes> ?p=<http://Alice> "});
+}
+
+// `UnionTest.create_an_simple_union_with_bgp_inside`: five solutions, and the
+// two branches bind DIFFERENT variables — the left has `?p ?a ?s`, the right
+// only `?p`. A solution is whatever its branch produced, which is what SPARQL
+// says and what this kernel does by carrying bindings per solution rather than
+// by a fixed row shape.
+TEST(PassageCases, aUnionWhoseBranchesBindDifferentVariables) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT * WHERE { { ?p <http://own> ?a . ?a <http://species> ?s } "
+        "UNION { ?p <http://address> <http://nantes> } }",
+        {"?a=<http://cat> ?p=<http://Alice> ?s=<http://feline> ",
+         "?a=<http://dog> ?p=<http://Alice> ?s=<http://canine> ",
+         "?a=<http://snake> ?p=<http://Alice> ?s=<http://reptile> ",
+         "?p=<http://Alice> ",
+         "?p=<http://Carol> "});
+}
+
 // The two cases of `BGPTest` that this fragment does not cover, recorded here
 // rather than left unmentioned: a `VALUES` of SEVERAL rows, which Passage
 // handles as a general operator and which would need a table operator to run.
