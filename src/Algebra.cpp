@@ -39,13 +39,29 @@ void writeBody(const Cont& c, std::ostringstream& out) {
       out << ' ';
       writeBody(c->children.back(), out);
       return;
-    case Node::Kind::Union:
-      out << "{ ";
-      writeBody(c->children.front(), out);
-      out << " } UNION { ";
-      writeBody(c->children.back(), out);
-      out << " }";
+    case Node::Kind::Union: {
+      // Flattened, as Passage's `FlattenUnflatten.unflattenUnion` does: three
+      // branches print as `{A} UNION {B} UNION {C}` and not as a nested
+      // pair. `UNION` is associative, so this is the same query — but it is
+      // the same text as well, which is the point.
+      std::vector<Cont> branches;
+      auto collect = [&branches](const Cont& node, auto&& self) -> void {
+        if (node->kind == Node::Kind::Union) {
+          self(node->children.front(), self);
+          self(node->children.back(), self);
+        } else {
+          branches.push_back(node);
+        }
+      };
+      collect(c, collect);
+      for (size_t i = 0; i < branches.size(); ++i) {
+        if (i > 0) { out << " UNION "; }
+        out << "{ ";
+        writeBody(branches[i], out);
+        out << " }";
+      }
       return;
+    }
     case Node::Kind::Slice:
       // A slice below the root has to be parenthesised as a subquery, since
       // `OFFSET` applies to a query and not to a group.
@@ -79,26 +95,16 @@ Cont bindings(std::vector<std::pair<std::string, std::string>> binds,
 Cont join(Cont left, Cont right) {
   if (isDone(left)) { return right; }
   if (isDone(right)) { return left; }
-  // A join over a union is DISTRIBUTED, not kept: `(a ∪ b) ⋈ p` becomes
-  // `(a ⋈ p) ∪ (b ⋈ p)`. Join distributes over union, so this says the same
-  // thing, and it is the choice this kernel has already made everywhere else
-  // — Passage's algebra factors a common suffix out of a union, and here the
-  // suffix goes into each branch instead, so the reader needs no operator for
-  // a union joined with a pattern.
+  // A join over a union is KEPT, not distributed, because that is the form
+  // Passage writes: `Pause2Next.visit(OpJoin)` builds
+  // `OpJoin.create(left, join.getRight())` with `left` already a union when
+  // three patterns are nested, and Jena does not push the right side into the
+  // branches. An earlier version here distributed it, which said the same
+  // thing in different text — and different text is a divergence, since a
+  // continuation should read the same whichever implementation produced it.
   //
-  // Not cosmetic: a join of three patterns pauses with its outer side already
-  // a union, so without this the kernel printed a continuation its own planner
-  // refused, and a sequence over three patterns could not terminate. Found by
-  // Passage's own `BGPTest` cases, where Alice's three animals make the inner
-  // scan deep enough to reach it.
-  if (left->kind == Node::Kind::Union) {
-    return unite(join(left->children.front(), right),
-                 join(left->children.back(), right));
-  }
-  if (right->kind == Node::Kind::Union) {
-    return unite(join(left, right->children.front()),
-                 join(left, right->children.back()));
-  }
+  // Nothing is needed to execute it: `JoinIterator`'s left side is an
+  // iterator, so a union serves there as well as a scan does.
   return make(Node{Node::Kind::Join, {}, 0, {},
                    {std::move(left), std::move(right)}});
 }

@@ -132,27 +132,28 @@ std::unique_ptr<Iterator> buildGroup(const Index& index,
                                      Context& context, size_t offset) {
   Group group = readGroup(pattern);
 
+  std::unique_ptr<Iterator> tree;
+  size_t firstPattern = 0;
   if (group.union_ != nullptr) {
-    if (group.subquery != nullptr || !group.triples.empty() || offset > 0) {
-      refuse("a UNION joined with something else");
+    // A union is the outermost loop of its group, and the patterns beside it
+    // nest inside — which is what `{ {A} UNION {B} } tp` means, and what
+    // Passage writes when it factors a suffix out of a union.
+    if (group.subquery != nullptr) {
+      refuse("a UNION beside a subquery in one group");
     }
-    // The left branch runs now; the right is built only if the left runs out,
-    // and is re-emitted as written if the execution pauses before that.
+    if (offset > 0) { refuse("an OFFSET on a group that holds a UNION"); }
     const parsedQuery::Union& u = *group.union_;
     auto left = buildGroup(index, u._child1, context, 0);
     auto makeRight = [&index, &u, &context]() {
       return buildGroup(index, u._child2, context, 0);
     };
-    // `_child2` as algebra. A group is a query with no offset of its own.
+    // `_child2` as algebra, for the case where the execution pauses before
+    // reaching it. A group is a query with no offset of its own.
     ParsedQuery asQuery;
     asQuery._rootGraphPattern = u._child2;
-    return std::make_unique<UnionIterator>(std::move(left), makeRight,
+    tree = std::make_unique<UnionIterator>(std::move(left), makeRight,
                                            queryAsCont(asQuery));
-  }
-
-  std::unique_ptr<Iterator> tree;
-  size_t firstPattern = 0;
-  if (group.subquery != nullptr) {
+  } else if (group.subquery != nullptr) {
     if (offset > 0) {
       refuse("an OFFSET on a group that also holds a subquery");
     }
@@ -199,16 +200,16 @@ std::unique_ptr<Iterator> buildTree(const Index& index,
 Cont queryAsCont(const ParsedQuery& query) {
   Group group = readGroup(query._rootGraphPattern);
 
+  Cont body = done();
   if (group.union_ != nullptr) {
+    // A union is the group's outermost part, and the patterns beside it join
+    // onto it below — it no longer returns early, which dropped them.
     ParsedQuery left;
     left._rootGraphPattern = group.union_->_child1;
     ParsedQuery right;
     right._rootGraphPattern = group.union_->_child2;
-    return unite(queryAsCont(left), queryAsCont(right));
-  }
-
-  Cont body = done();
-  if (group.subquery != nullptr) {
+    body = unite(queryAsCont(left), queryAsCont(right));
+  } else if (group.subquery != nullptr) {
     body = queryAsCont(group.subquery->get());
   }
   for (const auto& triple : group.triples) {

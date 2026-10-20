@@ -155,14 +155,35 @@ TEST(PassageCases, aHandWrittenContinuationThatMatchesNothing) {
 
 // `BGPTest.issue_with_the_first_offset`, the other hand-written continuation.
 //
-// Passage writes it with the trailing `?a <species> ?s` *outside* the union,
-// which its algebra can factor; this kernel distributes that suffix into both
-// branches instead, since its `pause()` never writes a union joined with a
-// pattern and its planner therefore refuses one. The query below is that
-// distribution; everything else, the `BIND` included, is Passage's own text,
-// and so is the expected answer: cat is already produced, so only dog and
-// snake remain.
-TEST(PassageCases, aHandWrittenContinuationWithAUnion) {
+// `BGPTest.issue_with_the_first_offset`, VERBATIM: the trailing
+// `?a <species> ?s` sits *outside* the union, applying to both branches, which
+// is how Passage's algebra factors a common suffix. Reading it needs a join
+// whose left side is a union — nothing special to execute, since
+// `JoinIterator` takes an iterator there, but the planner used to refuse it.
+//
+// Expected answer is Passage's: cat is already produced, so only dog and snake
+// remain.
+TEST(PassageCases, passagesOwnContinuationVerbatim) {
+  Index index = indexFrom(triples9());
+  check(index,
+        "SELECT  * WHERE {   { {"
+        "  SELECT  * WHERE {"
+        "    BIND(<http://Alice> AS ?p)"
+        "    ?p  <http://own>  ?a"
+        " } OFFSET  1 } }"
+        " UNION"
+        " { { SELECT * WHERE { ?p  <http://address>  <http://nantes> } OFFSET  1 }"
+        "        ?p  <http://own>  ?a }"
+        "    ?a  <http://species>  ?s"
+        " }",
+        {"?a=<http://dog> ?p=<http://Alice> ?s=<http://canine> ",
+         "?a=<http://snake> ?p=<http://Alice> ?s=<http://reptile> "});
+}
+
+// The same answer with the suffix distributed into each branch, which is what
+// this kernel used to write. Both forms mean the same thing, and both are now
+// read; only the factored one is written, because that is Passage's.
+TEST(PassageCases, theSameContinuationWithTheSuffixDistributed) {
   Index index = indexFrom(triples9());
   check(index,
         "SELECT * WHERE { "

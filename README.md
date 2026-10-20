@@ -209,7 +209,7 @@ cmake --build build --target ContinuationTest AlgebraTest -j 4
 ./build/ContinuationTest
 ```
 
-Thirty tests, in three suites, each building its own index from Turtle
+Thirty-one tests, in three suites, each building its own index from Turtle
 under `$TMPDIR` so that none can be skipped for want of data.
 `AlgebraTest`'s seven check the paused-state algebra and how it prints, down to
 the exact SPARQL of Example 3.10.
@@ -253,6 +253,15 @@ quotas of 1, 2, 3 and 5.
   group, `VALUES`, a subquery with an `OFFSET`, a basic graph pattern, a
   `UNION` of two groups, and a plain nested group. Anything else is refused by
   what it is.
+* **No divergence from Passage's form, deliberately.** A paused join keeps the
+  common suffix *outside* the union, as `Pause2Next.visit(OpJoin)` does —
+  `{ {A} UNION {B} } tp`, not the suffix pushed into each branch — and
+  nested unions print flattened, as `FlattenUnflatten.unflattenUnion` does.
+  An earlier version distributed the suffix, which says the same thing in
+  different text, and different text is a divergence: a continuation should
+  read the same whichever implementation produced it.
+  `PassageCasesTest.passagesOwnContinuationVerbatim` runs the continuation from
+  Passage's own suite, character for character.
 * **The saved bindings are `BIND`, as in the paper.** An earlier version wrote
   `VALUES ?v { <t> }` because reading a `Values` back is reading plain terms
   while a `Bind` carries an expression. That was convenience for the author of
