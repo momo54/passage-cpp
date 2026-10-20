@@ -12,9 +12,16 @@ JoinIterator::JoinIterator(const Index& index, std::unique_ptr<Iterator> left,
       firstRightOffset_{rightOffset} {}
 
 void JoinIterator::openRight(size_t offset) {
-  right_ = std::make_unique<ScanIterator>(index_, rightPattern_,
-                                          leftSolution_.bindings, offset,
-                                          context_);
+  // Built once, reopened after. Volcano's contract is open/next/close on a
+  // fixed tree, and allocating a fresh operator per outer solution was a
+  // half-implementation of it: ten thousand `ScanIterator`s and as many
+  // `ScanCursor`s, for about 5 µs each on this join.
+  if (right_ == nullptr) {
+    right_ = std::make_unique<ScanIterator>(
+        index_, rightPattern_, leftSolution_.bindings, offset, context_);
+    return;
+  }
+  right_->reset(leftSolution_.bindings, offset);
 }
 
 bool JoinIterator::hasNext() {

@@ -51,12 +51,13 @@ std::string join2() {
          "?human <http://ex.org/occupation> ?occupation }";
 }
 
-std::vector<std::string> flatten(const std::vector<Solution>& solutions) {
+std::vector<std::string> flatten(const Index& index,
+                                 const std::vector<Solution>& solutions) {
   std::vector<std::string> flat;
   for (const auto& solution : solutions) {
     std::string row;
     for (const auto& b : solution.bindings) {
-      row += b.variable + "=" + b.text + " ";
+      row += b.variable + "=" + asText(index, b.term) + " ";
     }
     flat.push_back(row);
   }
@@ -77,7 +78,7 @@ std::pair<std::vector<std::string>, size_t> follow(const Index& index,
     for (const auto& solution : outcome.solutions) {
       std::string row;
       for (const auto& b : solution.bindings) {
-        row += b.variable + "=" + b.text + " ";
+        row += b.variable + "=" + asText(index, b.term) + " ";
       }
       flat.push_back(row);
     }
@@ -267,7 +268,7 @@ TEST(Continuation, aNestedLoopEnumeratesTheJoin) {
   Outcome outcome = evaluate(index, join2(), Quota{100});
   ASSERT_EQ(outcome.solutions.size(), 3u);
   EXPECT_FALSE(outcome.continuation.has_value());
-  EXPECT_EQ(flatten(outcome.solutions),
+  EXPECT_EQ(flatten(index, outcome.solutions),
             (std::vector<std::string>{
                 "?human=<http://ex.org/H1> ?occupation=<http://ex.org/O1> ",
                 "?human=<http://ex.org/H1> ?occupation=<http://ex.org/O2> ",

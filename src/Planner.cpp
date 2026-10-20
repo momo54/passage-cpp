@@ -70,8 +70,8 @@ Group readGroup(const parsedQuery::GraphPattern& pattern) {
                std::to_string(inline_._values.size()) + " rows");
       }
       const TripleComponent& term = inline_._values.front().front();
-      group.values.push_back(Binding{inline_._variables.front().name(),
-                                     term.toString(), term});
+      group.values.push_back(
+          Binding{inline_._variables.front().name(), term});
     } else if (const auto* bind = std::get_if<parsedQuery::Bind>(&operation)) {
       // `BIND(<term> AS ?v)`, which is what this kernel writes and what
       // Passage writes. Only a constant is accepted: a `BIND` of a computed
@@ -85,14 +85,12 @@ Group readGroup(const parsedQuery::GraphPattern& pattern) {
       if (const auto* iri =
               dynamic_cast<const sparqlExpression::IriExpression*>(expression)) {
         TripleComponent term{iri->value()};
-        group.values.push_back(
-            Binding{bind->_target.name(), term.toString(), term});
+        group.values.push_back(Binding{bind->_target.name(), term});
       } else if (const auto* literal =
                      dynamic_cast<const sparqlExpression::StringLiteralExpression*>(
                          expression)) {
         TripleComponent term{literal->value()};
-        group.values.push_back(
-            Binding{bind->_target.name(), term.toString(), term});
+        group.values.push_back(Binding{bind->_target.name(), term});
       } else {
         refuse("a BIND of something other than a constant (" +
                bind->getDescriptor() + ")");
@@ -217,7 +215,8 @@ Cont queryAsCont(const ParsedQuery& query) {
   }
   std::vector<std::pair<std::string, std::string>> binds;
   for (const Binding& b : group.values) {
-    binds.emplace_back(b.variable, b.text);
+    // A term read out of a query writes itself; no index is needed.
+    binds.emplace_back(b.variable, b.term.toString());
   }
   body = bindings(std::move(binds), body);
   size_t offset = query._limitOffset._offset;

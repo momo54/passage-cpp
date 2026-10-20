@@ -62,7 +62,7 @@ std::vector<std::string> follow(const Index& index, std::string query,
     for (const auto& solution : outcome.solutions) {
       std::vector<std::string> parts;
       for (const auto& b : solution.bindings) {
-        parts.push_back(b.variable + "=" + b.text);
+        parts.push_back(b.variable + "=" + asText(index, b.term));
       }
       std::sort(parts.begin(), parts.end());
       std::string row;

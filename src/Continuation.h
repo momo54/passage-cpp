@@ -44,6 +44,11 @@ namespace passage {
 // a quota of zero would never terminate and is rejected.
 struct Quota {
   size_t maxSolutions = 1000;
+  // Decompressed blocks kept per thread. QLever defaults this to zero, since
+  // its own engine never returns to a block; nesting loops does, constantly.
+  // Sixteen is what `QLeverBackend` sets for the Java engine, so that the two
+  // can be compared on the same storage behaviour.
+  size_t blockCache = 16;
 };
 
 // What one evaluation produced, and how to ask for the rest.

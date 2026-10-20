@@ -35,14 +35,33 @@ class ScanIterator : public Iterator {
   Solution next() override;
   Cont pause() override;
 
+  // Reopen this scan on new bindings, without rebuilding the operator.
+  //
+  // This is Volcano's contract and it was half-missing: a tree is built once
+  // and its operators are reopened, where `JoinIterator` used to allocate a
+  // fresh `ScanIterator` — and with it a fresh `ScanCursor` and a fresh
+  // projection — for every outer solution. Ten thousand allocations where
+  // the model says none, worth about 5 µs each.
+  //
+  // The bound variables must be the same ones, only their terms differ, which
+  // is what a nested loop does: the projection is therefore kept.
+  void reset(std::vector<Binding> bound, size_t offset);
+
  private:
+  // Open or reopen the cursor for the bindings in hand.
+  void openCursor(size_t offset);
+
+  // Kept for `pause()`, which resolves the saved bindings to text.
+  const Index& index_;
   // The pattern as the query writes it, which is what `pause()` prints.
   SparqlTripleSimple pattern_;
   std::vector<Binding> bound_;
   Context& context_;
   // The variables this scan itself produces: those not already bound.
   std::vector<std::pair<qlever::ScanCursor::Component, std::string>> projected_;
-  std::unique_ptr<qlever::ScanCursor> cursor_;
+  // `std::optional` and not `unique_ptr`: `reset` then reuses this storage
+  // instead of going back to the allocator, which is the point.
+  std::optional<qlever::ScanCursor> cursor_;
 };
 
 }  // namespace passage

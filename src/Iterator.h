@@ -27,6 +27,7 @@
 
 #include "Algebra.h"
 #include "global/Id.h"
+#include "index/Index.h"
 #include "parser/TripleComponent.h"
 
 namespace passage {
@@ -42,9 +43,19 @@ namespace passage {
 // a `TripleComponent` already.
 struct Binding {
   std::string variable;
-  std::string text;
+  // What the variable took. Holds an `Id` when a scan produced it, and the
+  // term the parser gave when a `BIND` or `VALUES` fixed it.
   TripleComponent term;
 };
+
+// `term` as a query would write it. Resolving an `Id` means a lookup in the
+// vocabulary, so this is called only when the text is actually wanted — by
+// whatever consumes the solutions, and by `pause()` for the bindings it saves.
+// Doing it in `next()` instead cost a lookup per variable per solution, which
+// made this kernel read six times slower than the Java engine it was being
+// compared against: that engine's `BackendBindings` resolve lazily and the
+// benchmark never asks. The asymmetry was mine, not the boundary's.
+std::string asText(const Index& index, const TripleComponent& term);
 
 // One solution: variables in the order the pattern writes them.
 struct Solution {

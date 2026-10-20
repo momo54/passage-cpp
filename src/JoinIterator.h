@@ -54,7 +54,9 @@ class JoinIterator : public Iterator {
   size_t firstRightOffset_;
   // The outer solution the inner scan is running under, and the scan itself.
   Solution leftSolution_;
-  std::unique_ptr<Iterator> right_;
+  // Concretely a scan, since the right side of a join here is a pattern. The
+  // concrete type is what lets it be reopened rather than rebuilt.
+  std::unique_ptr<ScanIterator> right_;
   bool started_ = false;
 };
 
